@@ -82,6 +82,18 @@ mruby_gemcut_pickup(mrb_state *mrb, const char name[])
   return gemcut_pickup(gcut, name);
 }
 
+int
+mruby_gemcut_imitate_to(mrb_state *dest, mrb_state *src)
+{
+  const struct gemcut *gsrc = get_gemcut(src);
+  struct gemcut *gdest = get_gemcut(dest);
+  if (gdest->fixed) { return 1; }
+
+  memcpy(gdest->pendings, gsrc->pendings, sizeof(gdest->pendings));
+
+  return 0;
+}
+
 static int
 nopendings(struct gemcut *gcut)
 {
