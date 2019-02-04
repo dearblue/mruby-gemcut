@@ -20,8 +20,12 @@ struct mgem_spec
   const struct mgem_spec *const *deps;
 };
 
-/* static const struct mgem_spec mgems_list[]; */
-#include MRUBY_GEMCUT_DEPS_HEADER
+/*
+ * HINT:
+ *      `<build>/mrbgems/mruby-gemcut/include/mruby-gemcut/deps.h` は
+ *      `mruby-gemcut/mrbgem.rake` によって構成ごとに生成される
+ */
+#include <mruby-gemcut/deps.h>
 
 struct gemcut
 {

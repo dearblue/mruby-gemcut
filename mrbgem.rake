@@ -28,11 +28,12 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
   end
 
 
-  # ここから下は全部 deps.h のためのコード
+  # ここから下は全部 mruby-gemcut/deps.h のためのコード
 
-  deps_h = File.join(build_dir, "deps.h")
+  hdrgendir = File.join(build_dir, "include")
+  deps_h = File.join(hdrgendir, "mruby-gemcut/deps.h")
   gemcut_o = File.join(build_dir, "src/mruby-gemcut.c").ext(exts.object)
-  cc.defines << %(MRUBY_GEMCUT_DEPS_HEADER="\\"#{File.expand_path deps_h}\\"")
+  cc.include_paths << hdrgendir
   file gemcut_o => [File.join(dir, "src/mruby-gemcut.c"), deps_h]
   file deps_h => [__FILE__, File.join(build.build_dir, "mrbgems/gem_init.c")] do |t|
     # NOTE: file タスク中であれば build.gems はすでに依存関係が解決されている状態。
