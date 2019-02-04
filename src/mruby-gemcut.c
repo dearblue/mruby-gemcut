@@ -110,7 +110,7 @@ finalization(mrb_state *mrb)
       ins = gcut->installs[i / 32];
     }
 
-    if (ins & 1) {
+    if (ins & 1 && mgem->gem_final) {
       /* TODO: mrb_protect でくくる */
       mgem->gem_final(mrb);
     }
@@ -142,7 +142,9 @@ gemcut_commit(mrb_state *mrb, mrb_value aa)
     if (pend & 1) {
       int inv = MGEMS_POPULATION - i - 1;
       gcut->installs[inv / 32] |= 1 << (inv % 32);
-      mgem->gem_init(mrb);
+      if (mgem->gem_init) {
+        mgem->gem_init(mrb);
+      }
     }
   }
 
