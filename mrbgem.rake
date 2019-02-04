@@ -72,27 +72,24 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
 }
 
 #ifdef __cplusplus
-# define DEPSNAME(N)  mruby_gemcut_internals_mgem_spec_deps::N
-# define DEPSDEF(N)   const struct mgem_spec *const mruby_gemcut_internals_mgem_spec_deps::N
-
-struct mruby_gemcut_internals_mgem_spec_deps
-{
+# define DEPSREF(N)         N()
+# define DEPSDECL(N, E)     static const struct mgem_spec *const *N()
+# define DEPSDEF(N, E, ...) static const struct mgem_spec *const *N() { static const struct mgem_spec *const deps[E] = { __VA_ARGS__ }; return deps; }
 #else
-# define DEPSNAME(N)  N
-# define DEPSDEF(N)   static const struct mgem_spec *const N
+# define DEPSREF(N)         N
+# define DEPSDECL(N, E)     static const struct mgem_spec *const N[E]
+# define DEPSDEF(N, E, ...) static const struct mgem_spec *const N[E] = { __VA_ARGS__ };
 #endif
-  #{
-    gems.map { |name, cname, gem, deps|
-      if deps.empty?
-        nil
-      else
-        %(static const struct mgem_spec *const deps_#{cname}[#{deps.size}];)
-      end
-    }.compact.join("\n  ")
-  }
-#ifdef __cplusplus
-};
-#endif
+
+#{
+  gems.map { |name, cname, gem, deps|
+    if deps.empty?
+      nil
+    else
+      %(DEPSDECL(deps_#{cname}, #{deps.size});)
+    end
+  }.compact.join("\n")
+}
 
 static const struct mgem_spec mgems_list[] = {
   #{
@@ -107,7 +104,7 @@ static const struct mgem_spec mgems_list[] = {
       if deps.empty?
         depsname = "NULL"
       else
-        depsname = "DEPSNAME(deps_#{cname})"
+        depsname = "DEPSREF(deps_#{cname})"
       end
 
       no = "/* %3d */" % i
@@ -123,7 +120,7 @@ static const struct mgem_spec mgems_list[] = {
       nil
     else
       deps = deps.map { |d| gindex[d] }.sort
-      %(DEPSDEF(deps_#{cname})[#{deps.size}] = { #{deps.map { |d| %(&mgems_list[#{d}]) }.join(", ") } };)
+      %(DEPSDEF(deps_#{cname}, #{deps.size}, #{deps.map { |d| %(&mgems_list[#{d}]) }.join(", ") }))
     end
   }.compact.join("\n")
 }
