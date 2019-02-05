@@ -62,13 +62,13 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
 #define MGEMS_BITMAP_UNITS #{gems.empty? ? 1 : (gems.size + 31) / 32}
 
 #{
-  gems.map { |name, cname, gem, deps|
-    if gem.generate_functions
-      %(void GENERATED_TMP_mrb_#{cname}_gem_init(mrb_state *);\nvoid GENERATED_TMP_mrb_#{cname}_gem_final(mrb_state *);)
-    else
-      nil
-    end
-  }.compact.join("\n")
+  gems.each_with_object("") { |(name, cname, gem, deps), a|
+    next unless gem.generate_functions
+
+    a << "\n" unless a.empty?
+    a << "void GENERATED_TMP_mrb_#{cname}_gem_init(mrb_state *);\n" \
+         "void GENERATED_TMP_mrb_#{cname}_gem_final(mrb_state *);"
+  }
 }
 
 #ifdef __cplusplus
@@ -82,18 +82,17 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
 #endif
 
 #{
-  gems.map { |name, cname, gem, deps|
-    if deps.empty?
-      nil
-    else
-      %(DEPSDECL(deps_#{cname}, #{deps.size});)
-    end
-  }.compact.join("\n")
+  gems.each_with_object("") { |(name, cname, gem, deps), a|
+    next if deps.empty?
+
+    a << "\n" unless a.empty?
+    a << %(DEPSDECL(deps_#{cname}, #{deps.size});)
+  }
 }
 
 static const struct mgem_spec mgems_list[] = {
   #{
-    gems.map.with_index { |(name, cname, gem, deps), i|
+    gems.each_with_object("").with_index { |((name, cname, gem, deps), a), i|
       if gem.generate_functions
         init = "GENERATED_TMP_mrb_#{cname}_gem_init"
         final = "GENERATED_TMP_mrb_#{cname}_gem_final"
@@ -109,20 +108,21 @@ static const struct mgem_spec mgems_list[] = {
 
       no = "/* %3d */" % i
 
-      %(#{no} { #{name.inspect}, #{init}, #{final}, #{deps.size}, #{depsname} })
-    }.join(",\n  ")
+      a << ",\n  " unless a.empty?
+      a << %(#{no} { #{name.inspect}, #{init}, #{final}, #{deps.size}, #{depsname} })
+    }
   }
 };
 
 #{
-  gems.map { |name, cname, gem, deps|
-    if deps.empty?
-      nil
-    else
-      deps = deps.map { |d| gindex[d] }.sort
-      %(DEPSDEF(deps_#{cname}, #{deps.size}, #{deps.map { |d| %(&mgems_list[#{d}]) }.join(", ") }))
-    end
-  }.compact.join("\n")
+  gems.each_with_object("") { |(name, cname, gem, deps), a|
+    next if deps.empty?
+
+    deps = deps.map { |d| gindex[d] }.sort
+    deplist = deps.map { |d| %(&mgems_list[#{d}]) }.join(", ")
+    a << "\n" unless a.empty?
+    a << %(DEPSDEF(deps_#{cname}, #{deps.size}, #{deplist}))
+  }
 }
     DEPS_H
   end
