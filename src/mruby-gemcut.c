@@ -52,6 +52,14 @@ get_gemcut(mrb_state *mrb)
   return (struct gemcut *)d->data;
 }
 
+MRB_API void
+mruby_gemcut_clear(mrb_state *mrb)
+{
+  struct gemcut *gcut = get_gemcut(mrb);
+  if (gcut->fixed) { return; }
+  memset(gcut->pendings, 0, sizeof(gcut->pendings));
+}
+
 static int
 gemcut_pickup(struct gemcut *gcut, const char name[])
 {
