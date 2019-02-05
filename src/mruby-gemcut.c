@@ -101,7 +101,9 @@ mruby_gemcut_imitate_to(mrb_state *dest, mrb_state *src)
   struct gemcut *gdest = get_gemcut(dest);
   if (gdest->fixed) { return 1; }
 
-  memcpy(gdest->pendings, gsrc->pendings, sizeof(gdest->pendings));
+  for (int i = 0; i < MGEMS_BITMAP_UNITS; i ++) {
+    gdest->pendings[i] |= gsrc->pendings[i];
+  }
 
   return 0;
 }
