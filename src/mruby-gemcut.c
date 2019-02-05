@@ -38,25 +38,37 @@ struct gemcut
 
 static const mrb_data_type gemcut_type = { "mruby-gemcut", mrb_free };
 
-static struct gemcut *
-get_gemcut(mrb_state *mrb)
+static mrb_value
+get_gemcut_trial(mrb_state *mrb, mrb_value unused)
 {
   mrb_value v = mrb_gv_get(mrb, id_gemcut);
   struct gemcut *gcut = (struct gemcut *)mrb_data_check_get_ptr(mrb, v, &gemcut_type);
-  if (gcut) { return gcut; }
+  if (gcut) { return mrb_cptr_value(mrb, gcut); }
 
   struct RData *d = mrb_data_object_alloc(mrb, NULL, NULL, &gemcut_type);
   d->data = mrb_calloc(mrb, 1, sizeof(struct gemcut));
   mrb_gv_set(mrb, id_gemcut, mrb_obj_value(d));
 
-  return (struct gemcut *)d->data;
+  return mrb_cptr_value(mrb, d->data);
+}
+
+MRB_API struct gemcut *
+get_gemcut(mrb_state *mrb)
+{
+  mrb_bool state;
+  mrb_value ret = mrb_protect(mrb, get_gemcut_trial, mrb_nil_value(), &state);
+  if (state || mrb_type(ret) != MRB_TT_CPTR) {
+    return NULL;
+  } else {
+    return (struct gemcut *)mrb_cptr(ret);
+  }
 }
 
 MRB_API void
 mruby_gemcut_clear(mrb_state *mrb)
 {
   struct gemcut *gcut = get_gemcut(mrb);
-  if (gcut->fixed) { return; }
+  if (gcut == NULL || gcut->fixed) { return; }
   memset(gcut->pendings, 0, sizeof(gcut->pendings));
 }
 
@@ -90,7 +102,7 @@ int
 mruby_gemcut_pickup(mrb_state *mrb, const char name[])
 {
   struct gemcut *gcut = get_gemcut(mrb);
-  if (gcut->fixed) { return 1; }
+  if (gcut == NULL || gcut->fixed) { return 1; }
   return gemcut_pickup(gcut, name);
 }
 
@@ -99,7 +111,7 @@ mruby_gemcut_imitate_to(mrb_state *dest, mrb_state *src)
 {
   const struct gemcut *gsrc = get_gemcut(src);
   struct gemcut *gdest = get_gemcut(dest);
-  if (gdest->fixed) { return 1; }
+  if (gsrc == NULL || gdest == NULL || gdest->fixed) { return 1; }
 
   for (int i = 0; i < MGEMS_BITMAP_UNITS; i ++) {
     gdest->pendings[i] |= gsrc->pendings[i];
@@ -128,6 +140,7 @@ static void
 finalization(mrb_state *mrb)
 {
   struct gemcut *gcut = get_gemcut(mrb);
+  if (gcut == NULL) { return; }
 
   uint32_t ins;
   const struct mgem_spec *mgem = mgems_list + MGEMS_POPULATION - 1;
@@ -148,6 +161,7 @@ gemcut_commit(mrb_state *mrb, mrb_value aa)
 {
   struct gemcut *gcut = get_gemcut(mrb);
 
+  if (gcut == NULL) { mrb_exc_raise(mrb, mrb_obj_value(mrb->nomem_err)); }
   if (gcut->fixed) { mrb_raise(mrb, E_RUNTIME_ERROR, "すでにコミットした状態です"); }
 
   gcut->fixed = 1;
@@ -199,7 +213,9 @@ mrb_mruby_gemcut_gem_init(mrb_state *mrb)
    * 二重初期化を避ける意味でこれ以降の `mruby_gemcut_commit()` を禁止する。
    */
 
-  get_gemcut(mrb)->fixed = 1;
+  struct gemcut *g = get_gemcut(mrb);
+  if (g == NULL) { mrb_exc_raise(mrb, mrb_obj_value(mrb->nomem_err)); }
+  g->fixed = 1;
 
 #if 0
   /* 以下を追加するかもしれない */
