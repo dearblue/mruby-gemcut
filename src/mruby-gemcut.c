@@ -90,7 +90,7 @@ int
 mruby_gemcut_pickup(mrb_state *mrb, const char name[])
 {
   struct gemcut *gcut = get_gemcut(mrb);
-  if (gcut->fixed) { mrb_raise(mrb, E_RUNTIME_ERROR, "すでにコミットした状態です"); }
+  if (gcut->fixed) { return 1; }
   return gemcut_pickup(gcut, name);
 }
 
