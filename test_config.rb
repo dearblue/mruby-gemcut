@@ -30,7 +30,7 @@ config["builds"].each_pair do |n, c|
   MRuby::Build.new(n) do |conf|
     toolchain :clang
 
-    conf.build_dir = c["build_dir"] || name
+    conf.build_dir = File.expand_path(c["build_dir"] || name)
 
     gembox config.dig("common", "gembox") if config.dig("common", "gembox")
     gembox c["gembox"] if c["gembox"]
