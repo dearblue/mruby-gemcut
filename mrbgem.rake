@@ -3,7 +3,7 @@
 require "fileutils"
 
 MRuby::Gem::Specification.new("mruby-gemcut") do |s|
-  s.summary = "startup installer for mruby gems"
+  s.summary = "runtime reconfigurer for mruby gems"
   version = File.read(File.join(File.dirname(__FILE__), "README.md")).scan(/^ *[-*] version: *(\d+(?:.\w+)+)/i).flatten[-1] rescue nil
   s.version = version if version
   s.license = "BSD-2-Clause"

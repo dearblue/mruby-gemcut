@@ -2,7 +2,7 @@
 
 `build_config.rb` であらかじめ組み込んだ mruby-gems を、`mrb_open_core()` した後に選り好みして取り込む仕組みを提供します。
 
-一つのプロセス空間で必要に応じて機能を省略・制限した個別の mruby state を構成可能です。
+一つのプロセス空間で必要に応じて機能を省略・制限した個別の mruby vm を構成可能です。
 
 
 ## だいじなおやくそく！
@@ -14,7 +14,7 @@
 
 ## できること
 
-`mruby-sprintf` + `mruby-print` のみを組み込んだ `mrb1` と、`mrb1` に `mruby-math` を追加した `mrb2` を持つ場合でサンプルをあげます。
+`mruby-sprintf` + `mruby-print` のみを組み込んだ `mrb1` と、`mrb1` に `mruby-math` を追加した `mrb2` を持つ場合でサンプルを示します。
 
 ```c
 mrb_state *mrb1 = mrb_open_core(mrb_default_allocf, NULL);
@@ -23,13 +23,12 @@ mruby_gemcut_pickup(mrb1, "mruby-print");
 mruby_gemcut_commit(mrb1); /* これ以降は mrb1 に対して mruby_gemcut_pickup() を受け付けない */
 
 mrb_state *mrb2 = mrb_open_core(mrb_default_allocf, NULL);
-mruby_gemcut_pickup(mrb2, "mruby-sprintf");
-mruby_gemcut_pickup(mrb2, "mruby-print");
+mruby_gemcut_imitate_to(mrb2, mrb1);  /* mrb1 と同じ mruby gems の構成にする */
 mruby_gemcut_pickup(mrb2, "mruby-math");
 mruby_gemcut_commit(mrb2); /* これ以降は mrb2 に対して mruby_gemcut_pickup() を受け付けない */
 ```
 
-※ruby 空間で利用可能なクラス・モジュール・メソッド・定数などは定義されません。
+※mruby 空間で利用可能なクラス・モジュール・メソッド・定数などは定義されません。
 
 
 ## くみこみかた
@@ -58,6 +57,8 @@ end
 
 
 ## つかいかた
+
+(そのうち書く)
 
 
 ## Specification
