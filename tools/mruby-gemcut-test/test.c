@@ -23,8 +23,11 @@ load_string(const char ruby[], int numgemcut, ...)
       mruby_gemcut_pickup(mrb, va_arg(va, const char *));
     }
     va_end(va);
-    mruby_gemcut_commit(mrb);
   }
+
+  mruby_gemcut_commit(mrb);
+  printf(">> committed gems: %s\n", mrb_str_to_cstr(mrb, mrb_inspect(mrb, mruby_gemcut_committed_list(mrb))));
+  fflush(stdout);
 
   mrb_value ret = load_string_trial(mrb, mrb_cptr_value(mrb, (void *)(uintptr_t)ruby));
   if (mrb->exc) { ret = mrb_obj_value(mrb->exc); }

@@ -68,7 +68,7 @@ end
   - Author: [dearblue](https://github.com/dearblue)
   - Project page: <https://github.com/dearblue/mruby-gemcut>
   - Licensing: [2 clause BSD License](LICENSE)
-  - Object code size: + 4 KiB or more
+  - Object code size: + 10 KiB
   - Required runtime heap size: + 1 KiB
   - Dependency external mruby-gems: (NONE)
   - Dependency C libraries: (NONE)
