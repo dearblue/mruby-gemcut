@@ -43,8 +43,8 @@ struct gemcut
   uint32_t fixed:1;
   uint32_t module_defined:1;
 
-  uint32_t pendings[MGEMS_BITMAP_UNITS];
-  uint32_t installs[MGEMS_BITMAP_UNITS];
+  bitmap_unit pendings[MGEMS_BITMAP_UNITS];
+  bitmap_unit installs[MGEMS_BITMAP_UNITS];
 };
 
 static int
@@ -114,7 +114,7 @@ gemcut_pickup(struct gemcut *gcut, const char name[])
       }
 
       int i = mgem - mgems_list;
-      gcut->pendings[i / 32] |= 1 << (i % 32);
+      gcut->pendings[i / MGEMS_UNIT_BITS] |= 1 << (i % MGEMS_UNIT_BITS);
 
       return 0;
     }
@@ -148,7 +148,7 @@ mruby_gemcut_imitate_to(mrb_state *dest, mrb_state *src)
 static int
 nopendings(struct gemcut *gcut)
 {
-  const uint32_t *p = gcut->pendings;
+  const bitmap_unit *p = gcut->pendings;
 
   for (int i = MGEMS_BITMAP_UNITS; i > 0; i --, p ++) {
     if (*p != 0) {
@@ -167,11 +167,11 @@ finalization(mrb_state *mrb)
   struct gemcut *gcut = get_gemcut(mrb);
   if (gcut == NULL) { return; }
 
-  uint32_t ins;
+  bitmap_unit ins;
   const struct mgem_spec *mgem = mgems_list + MGEMS_POPULATION - 1;
   for (int i = 0; i < MGEMS_POPULATION; i ++, mgem --, ins >>= 1) {
-    if (i % 32 == 0) {
-      ins = gcut->installs[i / 32];
+    if (i % MGEMS_UNIT_BITS == 0) {
+      ins = gcut->installs[i / MGEMS_UNIT_BITS];
     }
 
     if (ins & 1 && mgem->gem_final) {
@@ -197,16 +197,16 @@ gemcut_commit(mrb_state *mrb, mrb_value aa)
 
   mrb_state_atexit(mrb, finalization);
 
-  uint32_t pend;
+  bitmap_unit pend;
   const struct mgem_spec *mgem = mgems_list;
   for (int i = 0; i < MGEMS_POPULATION; i ++, mgem ++, pend >>= 1) {
-    if (i % 32 == 0) {
-      pend = gcut->pendings[i / 32];
+    if (i % MGEMS_UNIT_BITS == 0) {
+      pend = gcut->pendings[i / MGEMS_UNIT_BITS];
     }
 
     if (pend & 1) {
       int inv = MGEMS_POPULATION - i - 1;
-      gcut->installs[inv / 32] |= 1 << (inv % 32);
+      gcut->installs[inv / MGEMS_UNIT_BITS] |= 1 << (inv % MGEMS_UNIT_BITS);
       if (mgem->gem_init) {
         mgem->gem_init(mrb);
       }
@@ -261,7 +261,7 @@ gemcut_committed_list_trial(mrb_state *mrb, mrb_value unused)
   if (g->fixed == 0) { mrb_raise(mrb, E_RUNTIME_ERROR, "まだコミットされていません"); }
   mrb_value ary = mrb_ary_new(mrb);
   for (int i = 0; i < MGEMS_POPULATION; i ++) {
-    if ((g->installs[i / 32] >> (i % 32)) & 1) {
+    if ((g->installs[i / MGEMS_UNIT_BITS] >> (i % MGEMS_UNIT_BITS)) & 1) {
       const struct mgem_spec *e = &mgems_list[MGEMS_POPULATION - i - 1];
       mrb_ary_push(mrb, ary, mrb_str_new_static(mrb, e->name, strlen(e->name)));
     }
@@ -369,7 +369,7 @@ gemcut_committed_p_trial(mrb_state *mrb, mrb_value opaque)
   int index = gemcut_lookup(g, name);
   if (index < 0) { return mrb_nil_value(); }
   index = MGEMS_BITMAP_UNITS - index - 1;
-  if ((g->installs[index / 32] >> (index % 32)) & 1) {
+  if ((g->installs[index / MGEMS_UNIT_BITS] >> (index % MGEMS_UNIT_BITS)) & 1) {
     return mrb_true_value();
   } else {
     return mrb_false_value();

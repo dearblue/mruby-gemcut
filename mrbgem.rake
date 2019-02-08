@@ -49,6 +49,8 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
       [name, cname, g, g.dependencies.map { |e| e[:gem].to_s }]
     end
 
+    unit_bits = 32
+
     FileUtils.mkpath File.dirname t.name
     File.write t.name, <<-"DEPS_H", mode: "wb"
 /*
@@ -59,7 +61,9 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
 /* NOTE: `struct mgem_spec` is defined in `mruby-gemcut/src/mruby-gemcut.c` */
 
 #define MGEMS_POPULATION #{gems.size}
-#define MGEMS_BITMAP_UNITS #{gems.empty? ? 1 : (gems.size + 31) / 32}
+#define MGEMS_BITMAP_UNITS #{gems.empty? ? 1 : (gems.size + (unit_bits - 1)) / unit_bits}
+#define MGEMS_UNIT_BITS #{unit_bits}
+typedef uint32_t bitmap_unit;
 
 #{
   gems.each_with_object("") { |(name, cname, gem, deps), a|
