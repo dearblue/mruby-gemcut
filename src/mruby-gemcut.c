@@ -398,25 +398,34 @@ mruby_gemcut_committed_p(mrb_state *mrb, const char name[])
 static mrb_value
 gemcut_s_pickup(mrb_state *mrb, mrb_value self)
 {
-  mrb_raisef(mrb, E_NOTIMP_ERROR, "%S:%S:%S", mrb_str_new_lit(mrb, __FILE__), mrb_fixnum_value(__LINE__), mrb_str_new_static(mrb, __func__, strlen(__func__)));
+  const char *name;
+  mrb_get_args(mrb, "z", &name);
+  int ret = mruby_gemcut_pickup(mrb, name);
+  return mrb_bool_value(!ret);
 }
 
 static mrb_value
 gemcut_s_commit(mrb_state *mrb, mrb_value self)
 {
-  mrb_raisef(mrb, E_NOTIMP_ERROR, "%S:%S:%S", mrb_str_new_lit(mrb, __FILE__), mrb_fixnum_value(__LINE__), mrb_str_new_static(mrb, __func__, strlen(__func__)));
+  mrb_get_args(mrb, "");
+  gemcut_commit(mrb, mrb_nil_value());
+  return mrb_nil_value();
 }
 
 static mrb_value
 gemcut_available_p(mrb_state *mrb, mrb_value self)
 {
-  mrb_raisef(mrb, E_NOTIMP_ERROR, "%S:%S:%S", mrb_str_new_lit(mrb, __FILE__), mrb_fixnum_value(__LINE__), mrb_str_new_static(mrb, __func__, strlen(__func__)));
+  const char *name;
+  mrb_get_args(mrb, "z", &name);
+  return gemcut_available_p_trial(mrb, mrb_cptr_value(mrb, (void *)name));
 }
 
 static mrb_value
 gemcut_committed_p(mrb_state *mrb, mrb_value self)
 {
-  mrb_raisef(mrb, E_NOTIMP_ERROR, "%S:%S:%S", mrb_str_new_lit(mrb, __FILE__), mrb_fixnum_value(__LINE__), mrb_str_new_static(mrb, __func__, strlen(__func__)));
+  const char *name;
+  mrb_get_args(mrb, "z", &name);
+  return gemcut_committed_p_trial(mrb, mrb_cptr_value(mrb, (void *)name));
 }
 
 static mrb_value
