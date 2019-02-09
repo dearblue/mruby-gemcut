@@ -207,6 +207,7 @@ gemcut_commit(mrb_state *mrb, mrb_value aa)
 
   mrb_state_atexit(mrb, finalization);
 
+  int ai = mrb_gc_arena_save(mrb);
   bitmap_unit pend;
   const struct mgem_spec *mgem = mgems_list;
   for (int i = 0; i < MGEMS_POPULATION; i ++, mgem ++, pend >>= 1) {
@@ -219,6 +220,7 @@ gemcut_commit(mrb_state *mrb, mrb_value aa)
       gcut->installs[inv / MGEMS_UNIT_BITS] |= 1 << (inv % MGEMS_UNIT_BITS);
       if (mgem->gem_init) {
         mgem->gem_init(mrb);
+        mrb_gc_arena_restore(mrb, ai);
       }
     }
   }
