@@ -159,7 +159,16 @@ nopendings(struct gemcut *gcut)
   return 1;
 }
 
+static mrb_value gem_final_trial(mrb_state *, mrb_value);
 static void finalization(mrb_state *);
+
+static mrb_value
+gem_final_trial(mrb_state *mrb, mrb_value opaque)
+{
+  const struct mgem_spec *mgem = (const struct mgem_spec *)mrb_cptr(opaque);
+  mgem->gem_final(mrb);
+  return mrb_nil_value();
+}
 
 static void
 finalization(mrb_state *mrb)
@@ -169,14 +178,15 @@ finalization(mrb_state *mrb)
 
   bitmap_unit ins;
   const struct mgem_spec *mgem = mgems_list + MGEMS_POPULATION - 1;
+  int ai = mrb_gc_arena_save(mrb);
   for (int i = 0; i < MGEMS_POPULATION; i ++, mgem --, ins >>= 1) {
     if (i % MGEMS_UNIT_BITS == 0) {
       ins = gcut->installs[i / MGEMS_UNIT_BITS];
     }
 
     if (ins & 1 && mgem->gem_final) {
-      /* TODO: mrb_protect でくくる */
-      mgem->gem_final(mrb);
+      mrb_protect(mrb, gem_final_trial, mrb_cptr_value(mrb, (void *)mgem), NULL);
+      mrb_gc_arena_restore(mrb, ai);
     }
   }
 }
