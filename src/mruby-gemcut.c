@@ -63,18 +63,26 @@ gemcut_lookup(const struct gemcut *g, const char name[])
 
 static const mrb_data_type gemcut_type = { "mruby-gemcut", mrb_free };
 
-static mrb_value
-get_gemcut_trial(mrb_state *mrb, mrb_value unused)
+static struct gemcut *
+get_gemcut(mrb_state *mrb)
 {
   mrb_value v = mrb_gv_get(mrb, id_gemcut);
   struct gemcut *gcut = (struct gemcut *)mrb_data_check_get_ptr(mrb, v, &gemcut_type);
-  if (gcut) { return mrb_cptr_value(mrb, gcut); }
 
-  struct RData *d = mrb_data_object_alloc(mrb, NULL, NULL, &gemcut_type);
-  d->data = mrb_calloc(mrb, 1, sizeof(struct gemcut));
-  mrb_gv_set(mrb, id_gemcut, mrb_obj_value(d));
+  if (gcut == NULL) {
+    struct RData *d = mrb_data_object_alloc(mrb, NULL, NULL, &gemcut_type);
+    d->data = mrb_calloc(mrb, 1, sizeof(struct gemcut));
+    mrb_gv_set(mrb, id_gemcut, mrb_obj_value(d));
+    gcut = (struct gemcut *)d->data;
+  }
 
-  return mrb_cptr_value(mrb, d->data);
+  return gcut;
+}
+
+static mrb_value
+get_gemcut_trial(mrb_state *mrb, mrb_value unused)
+{
+  return mrb_cptr_value(mrb, get_gemcut(mrb));
 }
 
 MRB_API struct gemcut *
