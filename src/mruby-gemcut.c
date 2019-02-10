@@ -251,7 +251,7 @@ mruby_gemcut_commit(mrb_state *mrb)
 static mrb_value
 gemcut_available_list_trial(mrb_state *mrb, mrb_value unused)
 {
-  struct gemcut *g = get_gemcut(mrb);
+  (void)get_gemcut(mrb);
   mrb_value ary = mrb_ary_new_capa(mrb, MGEMS_POPULATION);
   for (int i = 0; i < MGEMS_POPULATION; i ++) {
     mrb_ary_push(mrb, ary, mrb_str_new_static(mrb, mgems_list[i].name, strlen(mgems_list[i].name)));
@@ -301,7 +301,7 @@ mruby_gemcut_committed_list(mrb_state *mrb)
 static mrb_value
 gemcut_available_size_trial(mrb_state *mrb, mrb_value opaque)
 {
-  struct gemcut *g = get_gemcut(mrb);
+  (void)get_gemcut(mrb);
   return mrb_fixnum_value(MGEMS_POPULATION);
 }
 
