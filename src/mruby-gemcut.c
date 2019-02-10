@@ -108,27 +108,26 @@ mruby_gemcut_clear(mrb_state *mrb)
 static int
 gemcut_pickup(struct gemcut *gcut, const char name[])
 {
-  /* TODO: すでに含むようになっている mgem であればそのまま回れ右 */
+  int gi = gemcut_lookup(gcut, name);
+  if (gi < 0) { return 1; }
+  if (gcut->pendings[gi / MGEMS_UNIT_BITS] & (1 << gi % MGEMS_UNIT_BITS)) {
+    return 0;
+  }
 
-  FOREACH_ALIST(const struct mgem_spec, *mgem, mgems_list) {
-    if (strcmp(name, mgem->name) == 0) {
-      if (mgem->deps) {
-        /* deps を先に再帰的初期化する */
-        FOREACH_NLIST(const struct mgem_spec, *d, mgem->numdeps, *mgem->deps) {
-          if (gemcut_pickup(gcut, d->name) != 0) {
-            return 1;
-          }
-        }
+  const struct mgem_spec *mgem = &mgems_list[gi];
+
+  if (mgem->deps) {
+    /* deps を先に再帰的初期化する */
+    FOREACH_NLIST(const struct mgem_spec, *d, mgem->numdeps, *mgem->deps) {
+      if (gemcut_pickup(gcut, d->name) != 0) {
+        return 1;
       }
-
-      int i = mgem - mgems_list;
-      gcut->pendings[i / MGEMS_UNIT_BITS] |= 1 << (i % MGEMS_UNIT_BITS);
-
-      return 0;
     }
   }
 
-  return 1;
+  gcut->pendings[gi / MGEMS_UNIT_BITS] |= 1 << (gi % MGEMS_UNIT_BITS);
+
+  return 0;
 }
 
 int
