@@ -78,7 +78,7 @@ get_gemcut_trial(mrb_state *mrb, mrb_value unused)
 }
 
 MRB_API struct gemcut *
-get_gemcut(mrb_state *mrb)
+get_gemcut_noraise(mrb_state *mrb)
 {
   mrb_bool state;
   mrb_value ret = mrb_protect(mrb, get_gemcut_trial, mrb_nil_value(), &state);
@@ -92,7 +92,7 @@ get_gemcut(mrb_state *mrb)
 MRB_API void
 mruby_gemcut_clear(mrb_state *mrb)
 {
-  struct gemcut *gcut = get_gemcut(mrb);
+  struct gemcut *gcut = get_gemcut_noraise(mrb);
   if (gcut == NULL || gcut->fixed) { return; }
   memset(gcut->pendings, 0, sizeof(gcut->pendings));
 }
@@ -126,7 +126,7 @@ gemcut_pickup(struct gemcut *gcut, const char name[])
 int
 mruby_gemcut_pickup(mrb_state *mrb, const char name[])
 {
-  struct gemcut *gcut = get_gemcut(mrb);
+  struct gemcut *gcut = get_gemcut_noraise(mrb);
   if (gcut == NULL || gcut->fixed) { return 1; }
   return gemcut_pickup(gcut, name);
 }
@@ -134,8 +134,8 @@ mruby_gemcut_pickup(mrb_state *mrb, const char name[])
 int
 mruby_gemcut_imitate_to(mrb_state *dest, mrb_state *src)
 {
-  const struct gemcut *gsrc = get_gemcut(src);
-  struct gemcut *gdest = get_gemcut(dest);
+  const struct gemcut *gsrc = get_gemcut_noraise(src);
+  struct gemcut *gdest = get_gemcut_noraise(dest);
   if (gsrc == NULL || gdest == NULL || gdest->fixed) { return 1; }
 
   for (int i = 0; i < MGEMS_BITMAP_UNITS; i ++) {
@@ -173,7 +173,7 @@ gem_final_trial(mrb_state *mrb, mrb_value opaque)
 static void
 finalization(mrb_state *mrb)
 {
-  struct gemcut *gcut = get_gemcut(mrb);
+  struct gemcut *gcut = get_gemcut_noraise(mrb);
   if (gcut == NULL) { return; }
 
   bitmap_unit ins;
@@ -194,7 +194,7 @@ finalization(mrb_state *mrb)
 static mrb_value
 gemcut_commit(mrb_state *mrb, mrb_value aa)
 {
-  struct gemcut *gcut = get_gemcut(mrb);
+  struct gemcut *gcut = get_gemcut_noraise(mrb);
 
   if (gcut == NULL) { mrb_exc_raise(mrb, mrb_obj_value(mrb->nomem_err)); }
   if (gcut->fixed) { mrb_raise(mrb, E_RUNTIME_ERROR, "すでにコミットした状態です"); }
@@ -244,7 +244,7 @@ mruby_gemcut_commit(mrb_state *mrb)
 static mrb_value
 gemcut_available_list_trial(mrb_state *mrb, mrb_value unused)
 {
-  struct gemcut *g = get_gemcut(mrb);
+  struct gemcut *g = get_gemcut_noraise(mrb);
   if (g == NULL) { mrb_exc_raise(mrb, mrb_obj_value(mrb->nomem_err)); }
   mrb_value ary = mrb_ary_new_capa(mrb, MGEMS_POPULATION);
   for (int i = 0; i < MGEMS_POPULATION; i ++) {
@@ -268,7 +268,7 @@ mruby_gemcut_available_list(mrb_state *mrb)
 static mrb_value
 gemcut_committed_list_trial(mrb_state *mrb, mrb_value unused)
 {
-  struct gemcut *g = get_gemcut(mrb);
+  struct gemcut *g = get_gemcut_noraise(mrb);
   if (g == NULL) { mrb_exc_raise(mrb, mrb_obj_value(mrb->nomem_err)); }
   if (g->fixed == 0) { mrb_raise(mrb, E_RUNTIME_ERROR, "まだコミットされていません"); }
   mrb_value ary = mrb_ary_new(mrb);
@@ -296,7 +296,7 @@ mruby_gemcut_committed_list(mrb_state *mrb)
 static mrb_value
 gemcut_available_size_trial(mrb_state *mrb, mrb_value opaque)
 {
-  struct gemcut *g = get_gemcut(mrb);
+  struct gemcut *g = get_gemcut_noraise(mrb);
   if (g == NULL) { mrb_exc_raise(mrb, mrb_obj_value(mrb->nomem_err)); }
   return mrb_fixnum_value(MGEMS_POPULATION);
 }
@@ -316,7 +316,7 @@ mruby_gemcut_available_size(mrb_state *mrb)
 static mrb_value
 gemcut_commit_size_trial(mrb_state *mrb, mrb_value opaque)
 {
-  struct gemcut *g = get_gemcut(mrb);
+  struct gemcut *g = get_gemcut_noraise(mrb);
   if (g == NULL) { mrb_exc_raise(mrb, mrb_obj_value(mrb->nomem_err)); }
   if (g->fixed == 0) { mrb_raise(mrb, E_RUNTIME_ERROR, "まだコミットされていません"); }
   int bits = 0;
@@ -342,7 +342,7 @@ static mrb_value
 gemcut_available_p_trial(mrb_state *mrb, mrb_value opaque)
 {
   const char *name = (const char *)mrb_cptr(opaque);
-  struct gemcut *g = get_gemcut(mrb);
+  struct gemcut *g = get_gemcut_noraise(mrb);
   if (g == NULL) { mrb_exc_raise(mrb, mrb_obj_value(mrb->nomem_err)); }
   int index = gemcut_lookup(g, name);
   if (index < 0) {
@@ -375,7 +375,7 @@ static mrb_value
 gemcut_committed_p_trial(mrb_state *mrb, mrb_value opaque)
 {
   const char *name = (const char *)mrb_cptr(opaque);
-  struct gemcut *g = get_gemcut(mrb);
+  struct gemcut *g = get_gemcut_noraise(mrb);
   if (g == NULL) { mrb_exc_raise(mrb, mrb_obj_value(mrb->nomem_err)); }
   if (g->fixed != 0) { return mrb_nil_value(); } /* XXX: 例外の方が嬉しいかな？ */
   int index = gemcut_lookup(g, name);
@@ -443,7 +443,7 @@ gemcut_committed_p(mrb_state *mrb, mrb_value self)
 static mrb_value
 gemcut_define_module_trial(mrb_state *mrb, mrb_value opaque)
 {
-  struct gemcut *g = get_gemcut(mrb);
+  struct gemcut *g = get_gemcut_noraise(mrb);
   if (g == NULL) { mrb_exc_raise(mrb, mrb_obj_value(mrb->nomem_err)); }
   if (g->module_defined) { mrb_raise(mrb, E_RUNTIME_ERROR, "GemCut モジュールはすでに定義されています"); }
 
@@ -481,7 +481,7 @@ mrb_mruby_gemcut_gem_init(mrb_state *mrb)
    * 二重初期化を避ける意味でこれ以降の `mruby_gemcut_commit()` を禁止する。
    */
 
-  struct gemcut *g = get_gemcut(mrb);
+  struct gemcut *g = get_gemcut_noraise(mrb);
   if (g == NULL) { mrb_exc_raise(mrb, mrb_obj_value(mrb->nomem_err)); }
   g->fixed = 1;
 
