@@ -85,7 +85,7 @@ get_gemcut_trial(mrb_state *mrb, mrb_value unused)
   return mrb_cptr_value(mrb, get_gemcut(mrb));
 }
 
-MRB_API struct gemcut *
+static struct gemcut *
 get_gemcut_noraise(mrb_state *mrb)
 {
   mrb_bool state;
