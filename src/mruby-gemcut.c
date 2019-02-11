@@ -201,9 +201,8 @@ finalization(mrb_state *mrb)
 static mrb_value
 gemcut_commit(mrb_state *mrb, mrb_value aa)
 {
-  struct gemcut *gcut = get_gemcut_noraise(mrb);
+  struct gemcut *gcut = get_gemcut(mrb);
 
-  if (gcut == NULL) { mrb_exc_raise(mrb, mrb_obj_value(mrb->nomem_err)); }
   if (gcut->fixed) { mrb_raise(mrb, E_RUNTIME_ERROR, "すでにコミットした状態です"); }
 
   gcut->fixed = 1;
