@@ -40,11 +40,11 @@ struct mgem_spec
 
 struct gemcut
 {
-  uint32_t fixed:1;
+  uint32_t gems_committed:1;
   uint32_t module_defined:1;
 
-  bitmap_unit pendings[MGEMS_BITMAP_UNITS];
-  bitmap_unit installs[MGEMS_BITMAP_UNITS];
+  bitmap_unit pickups[MGEMS_BITMAP_UNITS];
+  bitmap_unit commits[MGEMS_BITMAP_UNITS];
 };
 
 static int
@@ -101,8 +101,8 @@ MRB_API void
 mruby_gemcut_clear(mrb_state *mrb)
 {
   struct gemcut *gcut = get_gemcut_noraise(mrb);
-  if (gcut == NULL || gcut->fixed) { return; }
-  memset(gcut->pendings, 0, sizeof(gcut->pendings));
+  if (gcut == NULL || gcut->gems_committed) { return; }
+  memset(gcut->pickups, 0, sizeof(gcut->pickups));
 }
 
 static int
@@ -110,7 +110,7 @@ gemcut_pickup(struct gemcut *gcut, const char name[])
 {
   int gi = gemcut_lookup(gcut, name);
   if (gi < 0) { return 1; }
-  if (gcut->pendings[gi / MGEMS_UNIT_BITS] & (1 << gi % MGEMS_UNIT_BITS)) {
+  if (gcut->pickups[gi / MGEMS_UNIT_BITS] & (1 << gi % MGEMS_UNIT_BITS)) {
     return 0;
   }
 
@@ -125,7 +125,7 @@ gemcut_pickup(struct gemcut *gcut, const char name[])
     }
   }
 
-  gcut->pendings[gi / MGEMS_UNIT_BITS] |= 1 << (gi % MGEMS_UNIT_BITS);
+  gcut->pickups[gi / MGEMS_UNIT_BITS] |= 1 << (gi % MGEMS_UNIT_BITS);
 
   return 0;
 }
@@ -134,7 +134,7 @@ int
 mruby_gemcut_pickup(mrb_state *mrb, const char name[])
 {
   struct gemcut *gcut = get_gemcut_noraise(mrb);
-  if (gcut == NULL || gcut->fixed) { return 1; }
+  if (gcut == NULL || gcut->gems_committed) { return 1; }
   return gemcut_pickup(gcut, name);
 }
 
@@ -143,19 +143,19 @@ mruby_gemcut_imitate_to(mrb_state *dest, mrb_state *src)
 {
   const struct gemcut *gsrc = get_gemcut_noraise(src);
   struct gemcut *gdest = get_gemcut_noraise(dest);
-  if (gsrc == NULL || gdest == NULL || gdest->fixed) { return 1; }
+  if (gsrc == NULL || gdest == NULL || gdest->gems_committed) { return 1; }
 
   for (int i = 0; i < MGEMS_BITMAP_UNITS; i ++) {
-    gdest->pendings[i] |= gsrc->pendings[i];
+    gdest->pickups[i] |= gsrc->pickups[i];
   }
 
   return 0;
 }
 
 static int
-nopendings(struct gemcut *gcut)
+nopickups(struct gemcut *gcut)
 {
-  const bitmap_unit *p = gcut->pendings;
+  const bitmap_unit *p = gcut->pickups;
 
   for (int i = MGEMS_BITMAP_UNITS; i > 0; i --, p ++) {
     if (*p != 0) {
@@ -183,15 +183,15 @@ finalization(mrb_state *mrb)
   struct gemcut *gcut = get_gemcut_noraise(mrb);
   if (gcut == NULL) { return; }
 
-  bitmap_unit ins;
+  bitmap_unit comts;
   const struct mgem_spec *mgem = mgems_list + MGEMS_POPULATION - 1;
   int ai = mrb_gc_arena_save(mrb);
-  for (int i = 0; i < MGEMS_POPULATION; i ++, mgem --, ins >>= 1) {
+  for (int i = 0; i < MGEMS_POPULATION; i ++, mgem --, comts >>= 1) {
     if (i % MGEMS_UNIT_BITS == 0) {
-      ins = gcut->installs[i / MGEMS_UNIT_BITS];
+      comts = gcut->commits[i / MGEMS_UNIT_BITS];
     }
 
-    if (ins & 1 && mgem->gem_final) {
+    if (comts & 1 && mgem->gem_final) {
       mrb_protect(mrb, gem_final_trial, mrb_cptr_value(mrb, (void *)mgem), NULL);
       mrb_gc_arena_restore(mrb, ai);
     }
@@ -203,27 +203,27 @@ gemcut_commit(mrb_state *mrb, mrb_value aa)
 {
   struct gemcut *gcut = get_gemcut(mrb);
 
-  if (gcut->fixed) { mrb_raise(mrb, E_RUNTIME_ERROR, "すでにコミットした状態です"); }
+  if (gcut->gems_committed) { mrb_raise(mrb, E_RUNTIME_ERROR, "すでにコミットした状態です"); }
 
-  gcut->fixed = 1;
+  gcut->gems_committed = 1;
 
-  if (nopendings(gcut)) {
+  if (nopickups(gcut)) {
     return mrb_nil_value();
   }
 
   mrb_state_atexit(mrb, finalization);
 
   int ai = mrb_gc_arena_save(mrb);
-  bitmap_unit pend;
+  bitmap_unit picks;
   const struct mgem_spec *mgem = mgems_list;
-  for (int i = 0; i < MGEMS_POPULATION; i ++, mgem ++, pend >>= 1) {
+  for (int i = 0; i < MGEMS_POPULATION; i ++, mgem ++, picks >>= 1) {
     if (i % MGEMS_UNIT_BITS == 0) {
-      pend = gcut->pendings[i / MGEMS_UNIT_BITS];
+      picks = gcut->pickups[i / MGEMS_UNIT_BITS];
     }
 
-    if (pend & 1) {
+    if (picks & 1) {
       int inv = MGEMS_POPULATION - i - 1;
-      gcut->installs[inv / MGEMS_UNIT_BITS] |= 1 << (inv % MGEMS_UNIT_BITS);
+      gcut->commits[inv / MGEMS_UNIT_BITS] |= 1 << (inv % MGEMS_UNIT_BITS);
       if (mgem->gem_init) {
         mgem->gem_init(mrb);
         mrb_gc_arena_restore(mrb, ai);
@@ -274,10 +274,10 @@ static mrb_value
 gemcut_committed_list_trial(mrb_state *mrb, mrb_value unused)
 {
   struct gemcut *g = get_gemcut(mrb);
-  if (g->fixed == 0) { mrb_raise(mrb, E_RUNTIME_ERROR, "まだコミットされていません"); }
+  if (g->gems_committed == 0) { mrb_raise(mrb, E_RUNTIME_ERROR, "まだコミットされていません"); }
   mrb_value ary = mrb_ary_new(mrb);
   for (int i = 0; i < MGEMS_POPULATION; i ++) {
-    if ((g->installs[i / MGEMS_UNIT_BITS] >> (i % MGEMS_UNIT_BITS)) & 1) {
+    if ((g->commits[i / MGEMS_UNIT_BITS] >> (i % MGEMS_UNIT_BITS)) & 1) {
       const struct mgem_spec *e = &mgems_list[MGEMS_POPULATION - i - 1];
       mrb_ary_push(mrb, ary, mrb_str_new_static(mrb, e->name, strlen(e->name)));
     }
@@ -320,10 +320,10 @@ static mrb_value
 gemcut_commit_size_trial(mrb_state *mrb, mrb_value opaque)
 {
   struct gemcut *g = get_gemcut(mrb);
-  if (g->fixed == 0) { mrb_raise(mrb, E_RUNTIME_ERROR, "まだコミットされていません"); }
+  if (g->gems_committed == 0) { mrb_raise(mrb, E_RUNTIME_ERROR, "まだコミットされていません"); }
   int bits = 0;
   for (int i = 0; i < MGEMS_BITMAP_UNITS; i ++) {
-    bits += popcount32(g->installs[i]);
+    bits += popcount32(g->commits[i]);
   }
   return mrb_fixnum_value(bits);
 }
@@ -377,11 +377,11 @@ gemcut_committed_p_trial(mrb_state *mrb, mrb_value opaque)
 {
   const char *name = (const char *)mrb_cptr(opaque);
   struct gemcut *g = get_gemcut(mrb);
-  if (g->fixed != 0) { return mrb_nil_value(); } /* XXX: 例外の方が嬉しいかな？ */
+  if (g->gems_committed != 0) { return mrb_nil_value(); } /* XXX: 例外の方が嬉しいかな？ */
   int index = gemcut_lookup(g, name);
   if (index < 0) { return mrb_nil_value(); }
   index = MGEMS_BITMAP_UNITS - index - 1;
-  if ((g->installs[index / MGEMS_UNIT_BITS] >> (index % MGEMS_UNIT_BITS)) & 1) {
+  if ((g->commits[index / MGEMS_UNIT_BITS] >> (index % MGEMS_UNIT_BITS)) & 1) {
     return mrb_true_value();
   } else {
     return mrb_false_value();
@@ -481,7 +481,7 @@ mrb_mruby_gemcut_gem_init(mrb_state *mrb)
    */
 
   struct gemcut *g = get_gemcut(mrb);
-  g->fixed = 1;
+  g->gems_committed = 1;
 
   if (g->module_defined == 0) { gemcut_define_module_trial(mrb, mrb_nil_value()); }
 }
