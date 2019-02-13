@@ -60,8 +60,8 @@ main(int argc, char *argv[])
   load_string(TRUE, "GemCut.commit", 1, "mruby-print");
   load_string(TRUE, "GemCut.commit; p GemCut.committed_list", 1, "mruby-print");
   load_string(TRUE, "GemCut.commit; puts '%p' % GemCut.committed_list", 3, "mruby-sprintf", "mruby-math", "mruby-print");
-  load_string(TRUE, "GemCut.commit; p 'mruby-math': GemCut.committed?('mruby-math')", 3, "mruby-sprintf", "mruby-math", "mruby-print");
-  load_string(TRUE, "GemCut.commit; p 'mruby-io': GemCut.committed?('mruby-io')", 3, "mruby-sprintf", "mruby-math", "mruby-print");
+  load_string(TRUE, "GemCut.commit; p 'mruby-math' => GemCut.committed?('mruby-math')", 3, "mruby-sprintf", "mruby-math", "mruby-print");
+  load_string(TRUE, "GemCut.commit; p 'mruby-io' => GemCut.committed?('mruby-io')", 3, "mruby-sprintf", "mruby-math", "mruby-print");
   load_string(TRUE, "GemCut.commit; p GemCut.committed_list", 1, "mruby-print");
   load_string(TRUE, "GemCut.available_list.each { |mgem| GemCut.pickup mgem }; GemCut.commit; p GemCut.committed_list", 0);
 
