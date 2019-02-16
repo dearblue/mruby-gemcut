@@ -1,5 +1,6 @@
 MRuby::Build.new do
   toolchain :clang
+  enable_bintest
   enable_test
   enable_debug
   gem File.join(File.dirname(__FILE__), "..")
