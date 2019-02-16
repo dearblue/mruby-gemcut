@@ -78,7 +78,7 @@ end
 ```ruby
 MRuby::Build.new do |conf|
   conf.gem "mruby-gemcut", github: "dearblue/mruby-gemcut"
-  gemcut_incdir = ...
+  gemcut_incdir = "ディレクトリをどうにかして取得する"
   conf.cc.include_paths << gemcut_incdir
 end
 ```
@@ -88,19 +88,58 @@ end
 
 `mruby-sprintf` + `mruby-print` のみを組み込んだ `mrb1` と、`mrb1` に `mruby-math` を追加した `mrb2` を持つ場合でサンプルを示します。
 
-```c
-mrb_state *mrb1 = mrb_open_core(mrb_default_allocf, NULL);
-mruby_gemcut_pickup(mrb1, "mruby-sprintf");
-mruby_gemcut_pickup(mrb1, "mruby-print");
-mruby_gemcut_commit(mrb1); /* これ以降は mrb1 に対して mruby_gemcut_pickup() を受け付けない */
+まずは使いたい mruby gems を `build_config.rb` に追加します。
 
-mrb_state *mrb2 = mrb_open_core(mrb_default_allocf, NULL);
-mruby_gemcut_imitate_to(mrb2, mrb1);  /* mrb1 と同じ mruby gems の構成にする */
-mruby_gemcut_pickup(mrb2, "mruby-math");
-mruby_gemcut_commit(mrb2); /* これ以降は mrb2 に対して mruby_gemcut_pickup() を受け付けない */
+```ruby
+# build_config.rb
+
+MRuby::Build.new do |conf|
+  conf.toolchain :gcc
+  conf.gem core: "mruby-math"
+  conf.gem core: "mruby-sprintf"
+  conf.gem core: "mruby-print"
+  conf.gem "YOUR-BIN-TOOL"
+end
 ```
 
-※mruby 空間で利用可能なクラス・モジュール・メソッド・定数などは定義されません。
+```ruby
+# YOUR-BIN-TOOL/mrbgem.rake
+
+MRuby::Gem::Specification.new("YOUR-BIN-TOOL") do |spec|
+  spec.author = "YOURNAME"
+  spec.add_dependency "mruby-gemcut", github: "dearblue/mruby-gemcut"
+  spec.bins = %w(YOUR-BIN)
+end
+```
+
+それからあなたの実行コードに `mrb_open_core()` と mruby gemcut API を記述します。
+
+```c
+/* YOUR-BIN-TOOL/tools/YOUR-BIN/tool.c */
+
+#include <mruby.h>
+#include <mruby-gemcut.h>
+
+int
+main(int argc, char *argv[])
+{
+  mrb_state *mrb1 = mrb_open_core(mrb_default_allocf, NULL);
+  mruby_gemcut_pickup(mrb1, "mruby-sprintf");
+  mruby_gemcut_pickup(mrb1, "mruby-print");
+  mruby_gemcut_commit(mrb1); /* これ以降は mrb1 に対して mruby_gemcut_pickup() を受け付けない */
+
+  mrb_state *mrb2 = mrb_open_core(mrb_default_allocf, NULL);
+  mruby_gemcut_imitate_to(mrb2, mrb1);  /* mrb1 と同じ mruby gems の構成にする */
+  mruby_gemcut_pickup(mrb2, "mruby-math");
+  mruby_gemcut_commit(mrb2); /* これ以降は mrb2 に対して mruby_gemcut_pickup() を受け付けない */
+
+  /*
+   * mrb1 と mrb2 を面白可笑しく処理する
+   */
+
+  return 0;
+}
+```
 
 
 ## Specification
