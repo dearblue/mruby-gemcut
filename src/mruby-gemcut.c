@@ -212,14 +212,11 @@ alloc_context(mrb_state *mrb)
    *      mruby 1.2, 1.3, 1.4, 1.4.1, 2.0 は host/bin/mruby-gemcut-test が動作することを確認。
    */
   struct mrb_context *c = (struct mrb_context *)mrb_calloc(mrb, 1, sizeof(struct mrb_context));
-  c->stbase = (mrb_value *)mrb_malloc_simple(mrb, context_stack_size * sizeof(*c->stbase));
-  if (c->stbase == NULL) { goto nomem; }
+  c->stbase = (mrb_value *)mrb_malloc(mrb, context_stack_size * sizeof(*c->stbase));
   /* c->stbase の初期化は setup_context() で行うため省略 */
   c->stend = c->stbase + context_stack_size;
   c->stack = c->stbase;
-  c->cibase = (mrb_callinfo *)mrb_malloc_simple(mrb, context_ci_size * sizeof(*c->cibase));
-  if (c->cibase == NULL) { goto nomem; }
-  memset(c->cibase, 0, context_ci_size * sizeof(*c->cibase));
+  c->cibase = (mrb_callinfo *)mrb_calloc(mrb, context_ci_size, sizeof(*c->cibase));
   c->ciend = c->cibase + context_ci_size;
   c->ci = c->cibase;
   c->ci->stackent = c->stack;
@@ -228,11 +225,6 @@ alloc_context(mrb_state *mrb)
   //c->fib = mrb->c->fib;
 
   return c;
-
-nomem:
-  mrb_free_context(mrb, c);
-  mrb_exc_raise(mrb, mrb_obj_value(mrb->nomem_err));
-  return NULL; /* not reached here */
 }
 
 static void
@@ -255,10 +247,11 @@ struct gemcut_commit_restore
 static mrb_value
 gemcut_commit_trial(mrb_state *mrb, mrb_value args)
 {
-  const struct gemcut_commit_restore *p = (struct gemcut_commit_restore *)mrb_cptr(args);
+  struct gemcut_commit_restore *p = (struct gemcut_commit_restore *)mrb_cptr(args);
   int ai = mrb_gc_arena_save(mrb);
   bitmap_unit picks;
   const struct mgem_spec *mgem = mgems_list;
+  p->work_c = alloc_context(mrb);
   for (int i = 0; i < MGEMS_POPULATION; i ++, mgem ++, picks >>= 1) {
     if (i % MGEMS_UNIT_BITS == 0) {
       picks = p->gcut->pickups[i / MGEMS_UNIT_BITS];
@@ -305,7 +298,6 @@ gemcut_commit(mrb_state *mrb, mrb_value aa)
 
   struct gemcut_commit_restore restore = { gcut, mrb->c, NULL };
   mrb_value restorev = mrb_cptr_value(mrb, (void *)&restore);
-  restore.work_c = alloc_context(mrb);
   mrb_ensure(mrb, gemcut_commit_trial, restorev, gemcut_commit_restore, restorev);
   return mrb_nil_value();
 }
