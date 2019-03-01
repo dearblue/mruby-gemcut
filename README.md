@@ -107,6 +107,7 @@ end
 
 MRuby::Gem::Specification.new("YOUR-BIN-TOOL") do |spec|
   spec.author = "YOURNAME"
+  spec.license = "NYSL" # Likely Public Domain; See http://www.kmonos.net/nysl/
   spec.add_dependency "mruby-gemcut", github: "dearblue/mruby-gemcut"
   spec.bins = %w(YOUR-BIN)
 end
