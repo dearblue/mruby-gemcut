@@ -39,6 +39,6 @@ raised exceptions - NoMethodError: undefined method 'puts'
 >> committed gems: nil
 ["mruby-print"]
 >> committed gems: nil
-["mruby-test", "mruby-bin-mrbc", "mruby-compiler", "mruby-math", "mruby-print", "mruby-sprintf", "mruby-gemcut", "mruby-error"]
+["mruby-test", "mruby-bin-mrbc", "mruby-compiler", "mruby-math", "mruby-print", "mruby-sprintf", "test-mruby-gemcut", "mruby-gemcut", "mruby-error"]
   OUTPUT
 end

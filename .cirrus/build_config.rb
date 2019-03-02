@@ -3,7 +3,8 @@ MRuby::Build.new do
   enable_bintest
   enable_test
   enable_debug
-  gem File.join(File.dirname(__FILE__), "..")
+  gem File.join(__dir__, "..") do include_testtools end
+  gem File.join(__dir__, "../.testset")
   gem core: "mruby-sprintf"
   gem core: "mruby-print"
   gem core: "mruby-math"
