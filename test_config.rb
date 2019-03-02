@@ -47,6 +47,8 @@ config["builds"].each_pair do |n, c|
     Array(c["gems"]).each { |*g| gem *g }
 
     gem File.dirname(__FILE__) do |g|
+      include_testtools
+
       if g.cc.command =~ /\b(?:g?ccc|clang)\d*\b/
         g.cc.flags << "-std=c11" unless c["c++abi"]
         g.cc.flags << "-pedantic"

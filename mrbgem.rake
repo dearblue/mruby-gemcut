@@ -13,14 +13,10 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
   # for `mrb_protect()`
   add_dependency "mruby-error", core: "mruby-error"
 
-  #add_test_dependency "mruby-research", mgem: "mruby-research"
-
-  if build.test_enabled? || build.bintest_enabled?
-    # TODO: そのうち bintest も書く
-
-    s.bins = %w(
-      mruby-gemcut-test
-    )
+  class << self
+    def include_testtools
+      self.bins = %w(mruby-gemcut-test)
+    end
   end
 
   if cc.command =~ /\b(?:g?cc|clang)d*\b/
