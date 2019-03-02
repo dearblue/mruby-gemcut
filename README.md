@@ -1,50 +1,52 @@
 # mruby-gemcut
 
-`build_config.rb` であらかじめ組み込んだ mruby-gems を、`mrb_open_core()` した後に選り好みして取り込む仕組みを提供します。
+`mruby-gemcut` provide a mechanism to selectively incorporate mruby-gems pre-installed in `build_config.rb` after `mrb_open_core()`.
 
-一つの実行ファイル、同じプロセス空間で必要に応じて機能を省略・制限した個別の mruby vm を構成可能です。
+It is possible to configure individual mruby vm which omits / restricts functions in one executable file and the same process space as necessary.
 
-
-## だいじなおやくそく！
-
-***`mrb_open()` や `mrb_open_alloc()` を行った場合、二重初期化を避ける目的のため mruby gemcut API を行うことが出来ません。***
-
-***あくまでも `mrb_open_core()` した直後に `mruby_gemcut_pickup()` および `mruby_gemcut_commit()` を行って下さい。***
+([原文である日本語 README / Original Japanese version README](README.ja.md))
 
 
-## できること
+## THE GREATEST PLEASURES!
+
+***When doing `mrb_open()` or `mrb_open_alloc()` you can not do mruby gemcut API for the purpose of avoiding double initialization.***
+
+***Please do `mruby_gemcut_pickup()` and `mruby_gemcut_commit()` just after doing `mrb_open_core ()`.***
+
+
+## What you can do
 
 ### gemcut C API
 
-  - gem 加工 API
-      - `MRB_API int mruby_gemcut_imitate_to(mrb_state *dest, mrb_state *src);`  
-        `src` が選択した gems を `dest` に転写します。
-      - `MRB_API void mruby_gemcut_clear(mrb_state *mrb);`  
-        現在選択している gems をすべて破棄し、何も選択していない状態にします。
-      - `MRB_API int mruby_gemcut_pickup(mrb_state *mrb, const char name[]);`  
-        `name` 引数に一致する gem を選択状態にします。  
-        `name` は大文字小文字を区別します。
-      - `MRB_API struct RException *mruby_gemcut_commit(mrb_state *mrb);`  
-        現在選択している gems を利用可能なように初期化します。  
-        この関数を呼び出した後は、再びこの関数を呼び出すことは出来ません。  
-        初期化中に発生した例外は内部で捕捉し戻り値として返します。
-  - 状態取得 API
-      - `MRB_API mrb_value mruby_gemcut_available_list(mrb_state *mrb);`  
-        利用可能な、`build_config.rb` で含めてある gems の名前を配列で返します。
-      - `MRB_API mrb_value mruby_gemcut_committed_list(mrb_state *mrb);`  
-        `mruby_gemcut_commit()` して初期化された gems の名前の配列を返します。
-      - `MRB_API int mruby_gemcut_available_size(mrb_state *mrb);`  
-        利用可能な、`build_config.rb` で含めてある gems の数を返します。
-      - `MRB_API int mruby_gemcut_commit_size(mrb_state *mrb);`  
-        `mruby_gemcut_commit()` して初期化された gems の数を返します。
-      - `MRB_API mrb_bool mruby_gemcut_available_p(mrb_state *mrb, const char name[]);`  
-        gem が利用可能かどうか確認します。
-      - `MRB_API mrb_bool mruby_gemcut_committed_p(mrb_state *mrb, const char name[]);`  
-        gem が初期化されているかどうか確認します。
-  - mruby モジュール API
-      - `MRB_API int mruby_gemcut_define_module(mrb_state *mrb);`  
-        mruby 空間から利用可能な `GemCut` モジュールを初期化します。  
-        gemcut mruby API を用いたい場合はこの関数の呼び出しが必要です。
+  - gem processing API
+      - `MRB_API int mruby_gemcut_imitate_to (mrb_state * dest, mrb_state * src);`  
+        `src` transfers the selected gems to` dest`.
+      - `MRB_API void mruby_gemcut_clear (mrb_state * mrb);`  
+        Discards all currently selected gems and makes nothing selected.
+      - `MRB_API int mruby_gemcut_pickup (mrb_state * mrb, const char name []);`  
+        Select a gem that matches the `name` argument.  
+        `name` is case sensitive.
+      - `MRB_API struct RException * mruby_gemcut_commit (mrb_state * mrb);`  
+        Initialize the currently selected gems so that it can be used.  
+        After calling this function, you can not call this function again.  
+        Exceptions that occurred during initialization are internally captured and returned as return values.
+  - State acquisition API
+      - `MRB_API mrb_value mruby_gemcut_available_list (mrb_state * mrb);`  
+        Returns an array of the names of available gems included in `build_config.rb`.
+      - `MRB_API mrb_value mruby_gemcut_committed_list (mrb_state * mrb);`  
+        `mruby_gemcut_commit ()` and returns an array of names of gems initialized.
+      - `MRB_API int mruby_gemcut_available_size (mrb_state * mrb);`  
+        Returns the number of available gems included in `build_config.rb`.
+      - `MRB_API int mruby_gemcut_commit_size (mrb_state * mrb);`  
+        `mruby_gemcut_commit ()` and returns the number of initialized gems.
+      - `MRB_API mrb_bool mruby_gemcut_available_p (mrb_state * mrb, const char name []);`  
+        Make sure that gem is available.
+      - `MRB_API mrb_bool mruby_gemcut_committed_p (mrb_state * mrb, const char name []);`  
+        Make sure that gem is initialized.
+  - mruby module API
+      - `MRB_API int mruby_gemcut_define_module (mrb_state * mrb);`  
+        Initialize the available `GemCut` module from mruby space.  
+        If you want to use the gemcut mruby API, you need to call this function.
 
 ### gemcut mruby API
 
@@ -59,9 +61,9 @@
       - `GemCut.committed?(gemname)`
 
 
-## くみこみかた
+## How to install
 
-mruby gem パッケージとして依存したい場合、`mrbgem.rake` に記述して下さい。
+If you want to depend on mruby gem package, write it in `mrbgem.rake`.
 
 ```ruby
 # mrbgem.rake
@@ -73,22 +75,22 @@ end
 
 - - - -
 
-`build_config.rb` に gem として追加する場合、mruby-gemcut のインクルードディレクトリを含める必要があります。
+When adding as gem to `build_config.rb`, you need to include the include directory of mruby-gemcut.
 
 ```ruby
 MRuby::Build.new do |conf|
   conf.gem "mruby-gemcut", github: "dearblue/mruby-gemcut"
-  gemcut_incdir = "ディレクトリをどうにかして取得する"
+  gemcut_incdir = "<Fetch the directory somehow>"
   conf.cc.include_paths << gemcut_incdir
 end
 ```
 
 
-## つかいかた
+## How to use
 
-`mruby-sprintf` + `mruby-print` のみを組み込んだ `mrb1` と、`mrb1` に `mruby-math` を追加した `mrb2` を持つ場合でサンプルを示します。
+A sample is shown with `mrb1` including only` mruby-sprintf` + `mruby-print` and` mrb2` with `mruby-math` added to` mrb1`.
 
-まずは使いたい mruby gems を `build_config.rb` に追加します。
+First, add mruby gems you want to use to `build_config.rb`.
 
 ```ruby
 # build_config.rb
@@ -113,7 +115,7 @@ MRuby::Gem::Specification.new("YOUR-BIN-TOOL") do |spec|
 end
 ```
 
-それからあなたの実行コードに `mrb_open_core()` と mruby gemcut API を記述します。
+Then write `mrb_open_core ()` and mruby gemcut API in your execution code.
 
 ```c
 /* YOUR-BIN-TOOL/tools/YOUR-BIN/tool.c */
@@ -127,15 +129,15 @@ main(int argc, char *argv[])
   mrb_state *mrb1 = mrb_open_core(mrb_default_allocf, NULL);
   mruby_gemcut_pickup(mrb1, "mruby-sprintf");
   mruby_gemcut_pickup(mrb1, "mruby-print");
-  mruby_gemcut_commit(mrb1); /* これ以降は mrb1 に対して mruby_gemcut_pickup() を受け付けない */
+  mruby_gemcut_commit(mrb1); /* From this point on, mruby_gemcut_pickup () will not be accepted for mrb1 */
 
   mrb_state *mrb2 = mrb_open_core(mrb_default_allocf, NULL);
-  mruby_gemcut_imitate_to(mrb2, mrb1);  /* mrb1 と同じ mruby gems の構成にする */
+  mruby_gemcut_imitate_to(mrb2, mrb1);  /* Make the same mruby gems configuration as mrb1 */
   mruby_gemcut_pickup(mrb2, "mruby-math");
-  mruby_gemcut_commit(mrb2); /* これ以降は mrb2 に対して mruby_gemcut_pickup() を受け付けない */
+  mruby_gemcut_commit(mrb2); /* From this point on, mruby_gemcut_pickup () will not be accepted for mrb2 */
 
   /*
-   * mrb1 と mrb2 を面白可笑しく処理する
+   * Process mrb1 and mrb2 amusingly funny
    */
 
   return 0;
