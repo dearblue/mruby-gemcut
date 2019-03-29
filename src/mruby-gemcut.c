@@ -286,7 +286,7 @@ gemcut_commit(mrb_state *mrb, mrb_value aa)
 {
   struct gemcut *gcut = get_gemcut(mrb);
 
-  if (gcut->gems_committed) { mrb_raise(mrb, E_RUNTIME_ERROR, "すでにコミットした状態です"); }
+  if (gcut->gems_committed) { mrb_raise(mrb, E_RUNTIME_ERROR, "gemcut is already committed"); }
 
   gcut->gems_committed = 1;
 
@@ -342,7 +342,7 @@ static mrb_value
 gemcut_committed_list_trial(mrb_state *mrb, mrb_value unused)
 {
   struct gemcut *g = get_gemcut(mrb);
-  if (g->gems_committed == 0) { mrb_raise(mrb, E_RUNTIME_ERROR, "まだコミットされていません"); }
+  if (g->gems_committed == 0) { mrb_raise(mrb, E_RUNTIME_ERROR, "gemcut is not yet committed"); }
   mrb_value ary = mrb_ary_new(mrb);
   for (int i = 0; i < MGEMS_POPULATION; i ++) {
     if ((g->commits[i / MGEMS_UNIT_BITS] >> (i % MGEMS_UNIT_BITS)) & 1) {
@@ -388,7 +388,7 @@ static mrb_value
 gemcut_commit_size_trial(mrb_state *mrb, mrb_value opaque)
 {
   struct gemcut *g = get_gemcut(mrb);
-  if (g->gems_committed == 0) { mrb_raise(mrb, E_RUNTIME_ERROR, "まだコミットされていません"); }
+  if (g->gems_committed == 0) { mrb_raise(mrb, E_RUNTIME_ERROR, "gemcut is not yet committed"); }
   int bits = 0;
   for (int i = 0; i < MGEMS_BITMAP_UNITS; i ++) {
     bits += popcount32(g->commits[i]);
@@ -512,7 +512,7 @@ static mrb_value
 gemcut_define_module_trial(mrb_state *mrb, mrb_value opaque)
 {
   struct gemcut *g = get_gemcut(mrb);
-  if (g->module_defined) { mrb_raise(mrb, E_RUNTIME_ERROR, "GemCut モジュールはすでに定義されています"); }
+  if (g->module_defined) { mrb_raise(mrb, E_RUNTIME_ERROR, "GemCut module is already defined"); }
 
   struct RClass *gemcut_mod = mrb_define_module(mrb, "GemCut");
   mrb_define_class_method(mrb, gemcut_mod, "pickup", gemcut_s_pickup, MRB_ARGS_REQ(1));
