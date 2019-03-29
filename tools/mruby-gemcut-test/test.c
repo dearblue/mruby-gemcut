@@ -35,7 +35,7 @@ load_string(mrb_bool need_module, const char ruby[], int numgemcut, ...)
 
   mrb_value ret = load_string_trial(mrb, mrb_cptr_value(mrb, (void *)(uintptr_t)ruby));
   if (mrb->exc) { ret = mrb_obj_value(mrb->exc); }
-  if (mrb_type(ret) == MRB_TT_EXCEPTION) {
+  if (mrb_exception_p(ret)) {
     ret = mrb_inspect(mrb, ret);
     fprintf(stderr, "raised exceptions - %s\n", mrb_string_value_cstr(mrb, &ret));
     fflush(stderr);

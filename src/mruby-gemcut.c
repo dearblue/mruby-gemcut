@@ -90,7 +90,7 @@ get_gemcut_noraise(mrb_state *mrb)
 {
   mrb_bool state;
   mrb_value ret = mrb_protect(mrb, get_gemcut_trial, mrb_nil_value(), &state);
-  if (state || mrb_type(ret) != MRB_TT_CPTR) {
+  if (state || !mrb_cptr_p(ret)) {
     return NULL;
   } else {
     return (struct gemcut *)mrb_cptr(ret);
@@ -309,7 +309,7 @@ mruby_gemcut_commit(mrb_state *mrb)
   mrb_value ret = mrb_protect(mrb, gemcut_commit, mrb_nil_value(), &state);
 
   if (state) {
-    if (mrb_type(ret) == MRB_TT_EXCEPTION) { return mrb_exc_ptr(ret); }
+    if (mrb_exception_p(ret)) { return mrb_exc_ptr(ret); }
   }
 
   return NULL;
@@ -331,7 +331,7 @@ mruby_gemcut_available_list(mrb_state *mrb)
 {
   mrb_bool state;
   mrb_value ret = mrb_protect(mrb, gemcut_available_list_trial, mrb_nil_value(), &state);
-  if (state != 0 || mrb_type(ret) != MRB_TT_ARRAY) {
+  if (state != 0 || !mrb_array_p(ret)) {
     return mrb_nil_value();
   } else {
     return ret;
@@ -358,7 +358,7 @@ mruby_gemcut_committed_list(mrb_state *mrb)
 {
   mrb_bool state;
   mrb_value ret = mrb_protect(mrb, gemcut_committed_list_trial, mrb_nil_value(), &state);
-  if (state != 0 || mrb_type(ret) != MRB_TT_ARRAY) {
+  if (state != 0 || !mrb_array_p(ret)) {
     return mrb_nil_value();
   } else {
     return ret;
