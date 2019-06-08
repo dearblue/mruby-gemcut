@@ -26,6 +26,15 @@ MRB_API void mruby_gemcut_clear(mrb_state *mrb);
 MRB_API int mruby_gemcut_pickup(mrb_state *mrb, const char name[]);
 
 /**
+ * 複数の gem 名をまとめて与えることの出来る `mruby_gemcut_pickup()` 関数です。
+ *
+ * 途中でエラーが起きても続行しますが、その場合は `1` を返します。
+ *
+ * 正常であれば `0` を返します。
+ */
+MRB_API int mruby_gemcut_pickup_multi(mrb_state *mrb, int num_names, const char *name_table[]);
+
+/**
  * 現在選択している gems を利用可能なように初期化します。
  *
  * この関数を呼び出した後は、再びこの関数を呼び出すことは出来ません。

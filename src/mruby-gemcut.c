@@ -542,6 +542,22 @@ mruby_gemcut_define_module(mrb_state *mrb)
   }
 }
 
+MRB_API int
+mruby_gemcut_pickup_multi(mrb_state *mrb, int num_names, const char *name_table[])
+{
+  int err = 0;
+
+  if (num_names > 0) {
+    if (name_table == NULL) { return 1; }
+    const char **namep = name_table;
+    for (; num_names > 0; num_names --, namep ++) {
+      if (mruby_gemcut_pickup(mrb, *namep) != 0) { err = 1; }
+    }
+  }
+
+  return err;
+}
+
 void
 mrb_mruby_gemcut_gem_init(mrb_state *mrb)
 {
