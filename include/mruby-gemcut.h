@@ -6,6 +6,39 @@
 
 MRB_BEGIN_DECL
 
+/* oneshot gem cut API */
+
+/**
+ * この補助関数は新しい mruby vm を新たに作成し、複数の gem をまとめてコミットして、作成した mruby vm を返します。
+ *
+ * gemcut のための模倣したい mruby vm を与えた場合、`mruby_gemcut_imitate_to()` が呼ばれます。
+ *
+ * 処理の流れとしては次のようになります:
+ *
+ * * `mrb_open_core()`
+ * * `mruby_gemcut_imitate_to()`
+ * * `mruby_gemcut_pickup()`
+ * * `mruby_gemcut_commit()`
+ * * return with `mrb_state *`
+ */
+MRB_API mrb_state *mruby_gemcut_open(mrb_state *imitate_src, int num_names, const char *name_table[], mrb_allocf allocator, void *alloc_udata);
+
+/**
+ * この補助関数は新しい mruby vm を新たに作成し、gem cut を行う前に mruby バイナリを実行して、作成した mruby vm を返します。
+ *
+ * gemcut のための模倣したい mruby vm を与えた場合、事前に `mruby_gemcut_imitate_to()` が呼ばれます。
+ *
+ * 処理の流れとしては次のようになります:
+ *
+ * * `mrb_open_core()`
+ * * `mruby_gemcut_imitate_to()`
+ * * `mruby_gemcut_define_module()`
+ * * `mrb_load_irep()`
+ * * `mruby_gemcut_commit()`
+ * * return with `mrb_state *`
+ */
+MRB_API mrb_state *mruby_gemcut_open_mrb(mrb_state *imitate_src, const void *bin, size_t binsize, mrb_allocf allocator, void *alloc_udata);
+
 /* gem 加工 API */
 
 /**

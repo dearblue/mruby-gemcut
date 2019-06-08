@@ -1,5 +1,7 @@
 #include "internals.h"
 #include <string.h>
+#include <mruby/irep.h> /* for mrb_load_irep() */
+#include <mruby/dump.h> /* for bin_to_uint32() */
 
 #define FOREACH_ALIST(T, V, L)                                              \
         for (T V = (L), *_end_ = (L) + sizeof(L) / sizeof((L)[0]);          \
@@ -20,6 +22,30 @@ popcount32(uint32_t n)
   n += n >>  8; /* 以降は 0..32 に収まるため、ビットマスクは不要 */
   n += n >> 16;
   return n & 0xff;
+}
+
+enum {
+  BIN_SIZE_OFFSET = 10,
+  BIN_VERSION_OFFSET = 4,
+  BIN_VERSION_SIZE = 4,
+  BIN_HEADER_SIZE = 18
+};
+
+static int
+aux_load_irep_buf(mrb_state *mrb, const void *bin, size_t binsize)
+{
+  const uint8_t *p = (const uint8_t *)bin;
+
+  if (binsize < BIN_HEADER_SIZE) { return 1; }
+  if (memcmp(p + BIN_VERSION_OFFSET, RITE_BINARY_FORMAT_VER, BIN_VERSION_SIZE) != 0) { return 1; }
+  uint32_t declsize = bin_to_uint32(p + BIN_SIZE_OFFSET);
+  if (binsize < declsize) { return 1; }
+
+  mrb->exc = NULL;
+  mrb_load_irep(mrb, p);
+  if (mrb->exc) { return 1; }
+
+  return 0;
 }
 
 struct mgem_spec
@@ -556,6 +582,61 @@ mruby_gemcut_pickup_multi(mrb_state *mrb, int num_names, const char *name_table[
   }
 
   return err;
+}
+
+MRB_API mrb_state *
+mruby_gemcut_open(mrb_state *imitate_src, int num_names, const char *name_table[], mrb_allocf allocator, void *alloc_udata)
+{
+  if (allocator == NULL) {
+    allocator = mrb_default_allocf;
+    alloc_udata = NULL;
+  }
+
+  mrb_state *mrb = mrb_open_core(allocator, alloc_udata);
+  if (mrb == NULL) { goto failed; }
+
+  if (imitate_src) {
+    if (mruby_gemcut_imitate_to(mrb, imitate_src) != 0) { goto failed; }
+  }
+
+  if (mruby_gemcut_define_module(mrb) != 0) { goto failed; }
+  if (mruby_gemcut_pickup_multi(mrb, num_names, name_table) != 0) { goto failed; }
+  if (mruby_gemcut_commit(mrb) != 0) { goto failed; }
+
+  return mrb;
+
+failed:
+  if (mrb) { mrb_close(mrb); }
+  return NULL;
+}
+
+MRB_API mrb_state *
+mruby_gemcut_open_mrb(mrb_state *imitate_src, const void *bin, size_t binsize, mrb_allocf allocator, void *alloc_udata)
+{
+  if (allocator == NULL) {
+    allocator = mrb_default_allocf;
+    alloc_udata = NULL;
+  }
+
+  mrb_state *mrb = mrb_open_core(allocator, alloc_udata);
+  if (mrb == NULL) { goto failed; }
+
+  if (imitate_src) {
+    if (mruby_gemcut_imitate_to(mrb, imitate_src) != 0) { goto failed; }
+  }
+
+  if (mruby_gemcut_define_module(mrb) != 0) { goto failed; }
+  if (aux_load_irep_buf(mrb, bin, binsize) != 0) { goto failed; }
+
+  if (!mruby_gemcut_committed_p(mrb, NULL)) {
+    if (mruby_gemcut_commit(mrb) != NULL) { goto failed; }
+  }
+
+  return mrb;
+
+failed:
+  if (mrb) { mrb_close(mrb); }
+  return NULL;
 }
 
 void
