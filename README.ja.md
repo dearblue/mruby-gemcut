@@ -124,15 +124,16 @@ end
 int
 main(int argc, char *argv[])
 {
-  mrb_state *mrb1 = mrb_open_core(mrb_default_allocf, NULL);
-  mruby_gemcut_pickup(mrb1, "mruby-sprintf");
-  mruby_gemcut_pickup(mrb1, "mruby-print");
-  mruby_gemcut_commit(mrb1); /* これ以降は mrb1 に対して mruby_gemcut_pickup() を受け付けない */
+  const char *gems1[] = { "mruby-sprintf", "mruby-print" };
+  const int ngems1 = sizeof(gems1) / sizeof(gems1[0]);
+  const char *gems2[] = { "mruby-math" };
+  const int ngems2 = sizeof(gems2) / sizeof(gems2[0]);
 
-  mrb_state *mrb2 = mrb_open_core(mrb_default_allocf, NULL);
-  mruby_gemcut_imitate_to(mrb2, mrb1);  /* mrb1 と同じ mruby gems の構成にする */
-  mruby_gemcut_pickup(mrb2, "mruby-math");
-  mruby_gemcut_commit(mrb2); /* これ以降は mrb2 に対して mruby_gemcut_pickup() を受け付けない */
+  mrb_state *mrb1 = mruby_gemcut_open(NULL, ngems1, gems1, mrb_default_allocf, NULL);
+
+  /* 第1引数に既に gemcut をコミット済みの vm を与えると、その設定を複写する */
+  /* `mrb_default_allocf` の代わりに `NULL` を渡すことも出来る */
+  mrb_state *mrb2 = mruby_gemcut_open(mrb1, ngems2, gems2, NULL, NULL);
 
   /*
    * mrb1 と mrb2 を面白可笑しく処理する
@@ -142,11 +143,25 @@ main(int argc, char *argv[])
 }
 ```
 
+もし `mruby_gemcut_open()` が行う `mrb_open_core()` から `mruby_gemcut_commit()` の流れを自分で制御したい場合は次のようにします:
+
+```c
+mrb_state *mrb1 = mrb_open_core(mrb_default_allocf, NULL);
+mruby_gemcut_pickup(mrb1, "mruby-sprintf");
+mruby_gemcut_pickup(mrb1, "mruby-print");
+mruby_gemcut_commit(mrb1); /* これ以降は mrb1 に対して mruby_gemcut_pickup() を受け付けない */
+
+mrb_state *mrb2 = mrb_open_core(mrb_default_allocf, NULL);
+mruby_gemcut_imitate_to(mrb2, mrb1);  /* mrb1 と同じ mruby gems の構成にする */
+mruby_gemcut_pickup(mrb2, "mruby-math");
+mruby_gemcut_commit(mrb2); /* これ以降は mrb2 に対して mruby_gemcut_pickup() を受け付けない */
+```
+
 
 ## Specification
 
   - Package name: mruby-gemcut
-  - Version: 0.1.1
+  - Version: 0.2
   - Product quality: PROTOTYPE
   - Author: [dearblue](https://github.com/dearblue)
   - Project page: <https://github.com/dearblue/mruby-gemcut>
