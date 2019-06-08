@@ -445,6 +445,9 @@ gemcut_committed_p_trial(mrb_state *mrb, mrb_value opaque)
 {
   const char *name = (const char *)mrb_cptr(opaque);
   struct gemcut *g = get_gemcut(mrb);
+  if (name == NULL) {
+    return mrb_bool_value(g->gems_committed != 0);
+  }
   if (g->gems_committed == 0) { return mrb_nil_value(); } /* XXX: 例外の方が嬉しいかな？ */
   int index = gemcut_lookup(g, name);
   if (index < 0) { return mrb_nil_value(); }

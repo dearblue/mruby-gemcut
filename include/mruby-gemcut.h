@@ -59,6 +59,8 @@ MRB_API mrb_bool mruby_gemcut_available_p(mrb_state *mrb, const char name[]);
 
 /**
  * gem が初期化されているかどうか確認します。
+ *
+ * `name` に対して `NULL` を与えた場合、コミットされていれば真を、コミット前であれば偽を返します。
  */
 MRB_API mrb_bool mruby_gemcut_committed_p(mrb_state *mrb, const char name[]);
 
