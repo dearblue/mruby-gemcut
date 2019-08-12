@@ -548,7 +548,7 @@ gemcut_define_module_trial(mrb_state *mrb, mrb_value opaque)
   mrb_define_class_method(mrb, gemcut_mod, "commit", gemcut_s_commit, MRB_ARGS_NONE());
   mrb_define_class_method(mrb, gemcut_mod, "available_list", gemcut_available_list_trial, MRB_ARGS_NONE());
   mrb_define_class_method(mrb, gemcut_mod, "committed_list", gemcut_committed_list_trial, MRB_ARGS_NONE());
-  mrb_define_class_method(mrb, gemcut_mod, "available_sise", gemcut_available_size_trial, MRB_ARGS_NONE());
+  mrb_define_class_method(mrb, gemcut_mod, "available_size", gemcut_available_size_trial, MRB_ARGS_NONE());
   mrb_define_class_method(mrb, gemcut_mod, "commit_size", gemcut_commit_size_trial, MRB_ARGS_NONE());
   mrb_define_class_method(mrb, gemcut_mod, "available?", gemcut_available_p, MRB_ARGS_REQ(1));
   mrb_define_class_method(mrb, gemcut_mod, "committed?", gemcut_committed_p, MRB_ARGS_REQ(1));
