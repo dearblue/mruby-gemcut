@@ -83,6 +83,28 @@ MRuby::Build.new do |conf|
 end
 ```
 
+### ブラックリスト
+
+`mruby_gemcut_pickup()` 関数や `GemCut.pickup` メソッドによって有効化出来ない mruby gem を指定することが出来ます。
+
+たとえば "mruby-io" と "mruby-socket" をブラックリストに追加したい場合は次のようにします:
+
+```ruby
+# build_config.rb
+
+MRuby::Build.new do |conf|
+  ...
+  conf.gem "mruby-gemcut", github: "dearblue/mruby-gemcut" do
+    add_blacklist "mruby-io"
+    add_blacklist "mruby-socket"
+  end
+end
+```
+
+この設定でビルドしたバイナリは、`mruby_gemcut_pickup(mrb, "mruby-io")` や `GemCut.pickup("mruby-socket")` するとエラーが返ったり、例外が発生したりします。
+
+ただし `mruby_open()` や `mruby_open_alloc()` を制限するものではないことに注意して下さい。
+
 
 ## つかいかた
 
@@ -161,7 +183,7 @@ mruby_gemcut_commit(mrb2); /* これ以降は mrb2 に対して mruby_gemcut_pic
 ## Specification
 
   - Package name: mruby-gemcut
-  - Version: 0.2
+  - Version: 0.3
   - Product quality: PROTOTYPE
   - Author: [dearblue](https://github.com/dearblue)
   - Project page: <https://github.com/dearblue/mruby-gemcut>

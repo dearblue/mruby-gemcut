@@ -53,6 +53,7 @@ struct mgem_spec
   const char *name;
   void (*gem_init)(mrb_state *mrb);
   void (*gem_final)(mrb_state *mrb);
+  mrb_bool available:1;
   const uint32_t numdeps:16;
   const struct mgem_spec *const *deps;
 };
@@ -142,11 +143,14 @@ gemcut_pickup(struct gemcut *gcut, const char name[])
 
   const struct mgem_spec *mgem = &mgems_list[gi];
 
+  if (!mgem->available) { return 2; }
+
   if (mgem->deps) {
     /* deps を先に再帰的初期化する */
     FOREACH_NLIST(const struct mgem_spec, *d, mgem->numdeps, *mgem->deps) {
-      if (gemcut_pickup(gcut, d->name) != 0) {
-        return 1;
+      int status = gemcut_pickup(gcut, d->name);
+      if (status != 0) {
+        return status;
       }
     }
   }
@@ -510,7 +514,13 @@ gemcut_s_pickup(mrb_state *mrb, mrb_value self)
   const char *name;
   mrb_get_args(mrb, "z", &name);
   int ret = mruby_gemcut_pickup(mrb, name);
-  return mrb_bool_value(!ret);
+  switch (ret) {
+  case 2:
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "'%S' is not available (because it is included in the blacklist of mruby-gemcut)", mrb_str_new_cstr(mrb, name));
+    /* fall through (suppress the compiler warnings) */
+  default:
+    return mrb_bool_value(!ret);
+  }
 }
 
 static mrb_value

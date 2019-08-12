@@ -148,7 +148,7 @@ main(int argc, char *argv[])
 ## Specification
 
   - Package name: mruby-gemcut
-  - Version: 0.2
+  - Version: 0.3
   - Product quality: PROTOTYPE
   - Author: [dearblue](https://github.com/dearblue)
   - Project page: <https://github.com/dearblue/mruby-gemcut>
