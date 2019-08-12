@@ -53,7 +53,7 @@ struct mgem_spec
   const char *name;
   void (*gem_init)(mrb_state *mrb);
   void (*gem_final)(mrb_state *mrb);
-  const int numdeps;
+  const uint32_t numdeps:16;
   const struct mgem_spec *const *deps;
 };
 

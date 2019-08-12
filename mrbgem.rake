@@ -37,6 +37,11 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
     verbose = Rake.respond_to?(:verbose) ? Rake.verbose : $-v
     puts %(GEN   #{t.name}#{verbose ? " (by #{__FILE__})" : nil}\n)
 
+    gemcut_max_gems = 60000
+    if build.gems.size > gemcut_max_gems
+      raise "The allowable gem number in '#{s.name}' has been exceeded (maximum #{gemcut_max_gems})"
+    end
+
     gindex = {}
     gems = build.gems.map.with_index do |g, i|
       name = g.name.to_s
