@@ -6,12 +6,12 @@
 #define FOREACH_ALIST(T, V, L)                                              \
         for (T V = (L), *_end_ = (L) + sizeof(L) / sizeof((L)[0]);          \
              &V < _end_;                                                    \
-             &V ++)                                                         \
+             &V++)                                                          \
 
 #define FOREACH_NLIST(T, V, N, L)                                           \
         for (T V = (L), *_end_ = (L) + (N);                                 \
              &V < _end_;                                                    \
-             &V ++)                                                         \
+             &V++)                                                          \
 
 static inline int
 popcount32(uint32_t n)
@@ -181,7 +181,7 @@ mruby_gemcut_imitate_to(mrb_state *dest, mrb_state *src)
   struct gemcut *gdest = get_gemcut_noraise(dest);
   if (gsrc == NULL || gdest == NULL || gdest->gems_committed) { return 1; }
 
-  for (int i = 0; i < MGEMS_BITMAP_UNITS; i ++) {
+  for (int i = 0; i < MGEMS_BITMAP_UNITS; i++) {
     gdest->pickups[i] |= gsrc->pickups[i];
   }
 
@@ -193,7 +193,7 @@ nopickups(struct gemcut *gcut)
 {
   const bitmap_unit *p = gcut->pickups;
 
-  for (int i = MGEMS_BITMAP_UNITS; i > 0; i --, p ++) {
+  for (int i = MGEMS_BITMAP_UNITS; i > 0; i--, p++) {
     if (*p != 0) {
       return 0;
     }
@@ -222,7 +222,7 @@ finalization(mrb_state *mrb)
   bitmap_unit comts;
   const struct mgem_spec *mgem = mgems_list + MGEMS_POPULATION - 1;
   int ai = mrb_gc_arena_save(mrb);
-  for (int i = 0; i < MGEMS_POPULATION; i ++, mgem --, comts >>= 1) {
+  for (int i = 0; i < MGEMS_POPULATION; i++, mgem--, comts >>= 1) {
     if (i % MGEMS_UNIT_BITS == 0) {
       comts = gcut->commits[i / MGEMS_UNIT_BITS];
     }
@@ -271,7 +271,7 @@ alloc_context(mrb_state *mrb)
 static void
 setup_context(mrb_state *mrb, struct mrb_context *c)
 {
-  for (mrb_value *p = c->stbase; p < c->stend; p ++) {
+  for (mrb_value *p = c->stbase; p < c->stend; p++) {
     *p = mrb_nil_value();
   }
 
@@ -293,7 +293,7 @@ gemcut_commit_trial(mrb_state *mrb, mrb_value args)
   bitmap_unit picks;
   const struct mgem_spec *mgem = mgems_list;
   p->work_c = alloc_context(mrb);
-  for (int i = 0; i < MGEMS_POPULATION; i ++, mgem ++, picks >>= 1) {
+  for (int i = 0; i < MGEMS_POPULATION; i++, mgem++, picks >>= 1) {
     if (i % MGEMS_UNIT_BITS == 0) {
       picks = p->gcut->pickups[i / MGEMS_UNIT_BITS];
     }
@@ -361,7 +361,7 @@ gemcut_available_list_trial(mrb_state *mrb, mrb_value unused)
 {
   (void)get_gemcut(mrb);
   mrb_value ary = mrb_ary_new_capa(mrb, MGEMS_POPULATION);
-  for (int i = 0; i < MGEMS_POPULATION; i ++) {
+  for (int i = 0; i < MGEMS_POPULATION; i++) {
     mrb_ary_push(mrb, ary, mrb_str_new_static(mrb, mgems_list[i].name, strlen(mgems_list[i].name)));
   }
   return ary;
@@ -385,7 +385,7 @@ gemcut_committed_list_trial(mrb_state *mrb, mrb_value unused)
   struct gemcut *g = get_gemcut(mrb);
   if (g->gems_committed == 0) { mrb_raise(mrb, E_RUNTIME_ERROR, "gemcut is not yet committed"); }
   mrb_value ary = mrb_ary_new(mrb);
-  for (int i = 0; i < MGEMS_POPULATION; i ++) {
+  for (int i = 0; i < MGEMS_POPULATION; i++) {
     if ((g->commits[i / MGEMS_UNIT_BITS] >> (i % MGEMS_UNIT_BITS)) & 1) {
       const struct mgem_spec *e = &mgems_list[MGEMS_POPULATION - i - 1];
       mrb_ary_push(mrb, ary, mrb_str_new_static(mrb, e->name, strlen(e->name)));
@@ -431,7 +431,7 @@ gemcut_commit_size_trial(mrb_state *mrb, mrb_value opaque)
   struct gemcut *g = get_gemcut(mrb);
   if (g->gems_committed == 0) { mrb_raise(mrb, E_RUNTIME_ERROR, "gemcut is not yet committed"); }
   int bits = 0;
-  for (int i = 0; i < MGEMS_BITMAP_UNITS; i ++) {
+  for (int i = 0; i < MGEMS_BITMAP_UNITS; i++) {
     bits += popcount32(g->commits[i]);
   }
   return mrb_fixnum_value(bits);
@@ -597,7 +597,7 @@ mruby_gemcut_pickup_multi(mrb_state *mrb, int num_names, const char *name_table[
   if (num_names > 0) {
     if (name_table == NULL) { return 1; }
     const char **namep = name_table;
-    for (; num_names > 0; num_names --, namep ++) {
+    for (; num_names > 0; num_names--, namep++) {
       if (mruby_gemcut_pickup(mrb, *namep) != 0) { err = 1; }
     }
   }
