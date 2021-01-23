@@ -26,6 +26,8 @@ config = YAML.load <<'YAML'
       c++abi: true
 YAML
 
+MRuby::Lockfile.disable rescue nil
+
 config["builds"].each_pair do |n, c|
   MRuby::Build.new(n) do |conf|
     toolchain :clang
@@ -49,10 +51,11 @@ config["builds"].each_pair do |n, c|
     gem File.dirname(__FILE__) do |g|
       include_testtools
 
-      if g.cc.command =~ /\b(?:g?ccc|clang)\d*\b/
-        g.cc.flags << "-std=c11" unless c["c++abi"]
-        g.cc.flags << "-pedantic"
-        g.cc.flags << "-Wall"
+      if g.cc.command =~ /\b(?:g?cc|clang)\d*\b/
+        g.cc.flags << (c["c++abi"] ? "-std=c++11" : "-std=c11")
+        g.cc.flags << %w(-Wpedantic -Wall -Wextra)
+        g.cxx.flags << "-std=c++11"
+        g.cxx.flags << %w(-Wpedantic -Wall -Wextra)
       end
     end
   end
