@@ -1,22 +1,18 @@
 freebsd_instance:
-  image: freebsd-12-0-release-amd64
+  image: freebsd-12-2-release-amd64
 
 task:
   env:
     matrix:
       MRUBY_VERSION: master
-      MRUBY_VERSION: 2.0.0
-      MRUBY_VERSION: 1.4.1
-      MRUBY_VERSION: 1.4.0
-      MRUBY_VERSION: 1.3.0
-      MRUBY_VERSION: 1.2.0
 
   #install_script: pkg install -y ruby gcc6 bison git
-  install_script: pkg install -y ruby bison git
+  install_script: pkg install -y ruby rubygem-rake bison git
   script:
   - MRUBY_DIR=mruby-${MRUBY_VERSION}
   - fetch -o- https://github.com/mruby/mruby/archive/${MRUBY_VERSION}.zip | tar xf -
   - cd ${MRUBY_DIR}
   - export MRUBY_CONFIG=../.cirrus/build_config.rb
-  - ruby ./minirake test
+  - rake clean
+  - rake -mv test
   - build/host/bin/mruby-gemcut-test

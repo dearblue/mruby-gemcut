@@ -12,15 +12,8 @@ config = YAML.load <<'YAML'
     - :core: "mruby-bin-mruby"
   builds:
     host:
-      defines: MRB_INT64
+      defines:
       gembox: default
-    #host-int32:
-    #  defines: MRB_INT32
-    #host-nan-int16:
-    #  defines: [MRB_INT16, MRB_NAN_BOXING]
-    #host+:
-    #  defines: [MRB_INT64, MRB_WORD_BOXING]
-    #  c++exception: true
     host++:
       defines: [MRB_INT64, MRB_WORD_BOXING]
       c++abi: true
@@ -58,5 +51,8 @@ config["builds"].each_pair do |n, c|
         g.cxx.flags << %w(-Wpedantic -Wall -Wextra)
       end
     end
+
+    #enable_bintest
+    gem File.join(File.dirname(__FILE__), ".testset")
   end
 end
