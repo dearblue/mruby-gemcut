@@ -24,6 +24,21 @@ popcount32(uint32_t n)
   return n & 0xff;
 }
 
+#if MRUBY_RELEASE_NO < 20100
+static void
+mrb_obj_freeze(mrb_state *mrb, mrb_value obj)
+{
+  (void)mrb;
+# if MRUBY_RELEASE_NO < 10300
+  (void)obj;
+# else
+  if (!mrb_immediate_p(obj)) {
+    MRB_SET_FROZEN_FLAG(mrb_obj_ptr(obj));
+  }
+# endif
+}
+#endif
+
 enum {
 #if MRUBY_RELEASE_NO < 30000
   BIN_SIZE_OFFSET = 10,
@@ -285,6 +300,76 @@ struct gemcut_commit_restore
   struct mrb_context *work_c;
 };
 
+#define ID_GCARENA  mrb_intern_lit(mrb, "gcarena@mruby-gemcut-" __DATE__ "-" __TIME__)
+
+static void
+gemcut_snapshot_gc_arena(mrb_state *mrb)
+{
+  const mrb_gc *gc = &mrb->gc;
+  mrb_value gcarena = mrb_ary_new_capa(mrb, gc->arena_idx);
+  struct RBasic **bp = gc->arena;
+  size_t i = gc->arena_idx;
+
+  for (; i > 0; i--, bp++) {
+    mrb_ary_push(mrb, gcarena, mrb_obj_value(*bp));
+  }
+
+  mrb_obj_freeze(mrb, gcarena);
+  mrb_gv_set(mrb, ID_GCARENA, gcarena);
+}
+
+static void
+gemcut_rollback_gc_arena_fallback(mrb_state *mrb, mrb_gc *gc, mrb_value gcarena)
+{
+  int i = gc->arena_capa;
+  struct RBasic **bp = gc->arena;
+
+  for (; i > 0; i--, bp++) {
+    *bp = (struct RBasic *)mrb->object_class;
+  }
+
+  *gc->arena = (struct RBasic *)mrb_obj_ptr(gcarena);
+  gc->arena_idx = 1;
+}
+
+static void
+gemcut_rollback_gc_arena(mrb_state *mrb)
+{
+  mrb_gc *gc = &mrb->gc;
+  mrb_value gcarena = mrb_gv_get(mrb, ID_GCARENA);
+  mrb_gv_remove(mrb, ID_GCARENA);
+  size_t arenalen = RARRAY_LEN(gcarena);
+
+#ifdef MRB_GC_FIXED_ARENA
+  if (arenalen > MRB_GC_ARENA_SIZE) {
+    gemcut_rollback_gc_arena_fallback(mrb, gc, gcarena);
+    return;
+  }
+#else
+  if (arenalen > gc->arena_capa) {
+    mrb_value *p = (mrb_value *)mrb_realloc_simple(mrb, gc->arena, arenalen * sizeof(struct RBasic *));
+    if (p == NULL) {
+      gemcut_rollback_gc_arena_fallback(mrb, gc, gcarena);
+      return;
+    }
+  }
+#endif
+
+  struct RBasic **bp = gc->arena;
+  const mrb_value *vp = RARRAY_PTR(gcarena);
+  size_t i = arenalen;
+
+  for (; i > 0; i--, bp++, vp++) {
+    if (mrb_immediate_p(*vp)) {
+      *bp = (struct RBasic *)mrb->object_class;
+    } else {
+      *bp = (struct RBasic *)mrb_obj_ptr(*vp);
+    }
+  }
+
+  gc->arena_idx = arenalen;
+}
+
 static mrb_value
 gemcut_commit_trial(mrb_state *mrb, mrb_value args)
 {
@@ -292,6 +377,9 @@ gemcut_commit_trial(mrb_state *mrb, mrb_value args)
   int ai = mrb_gc_arena_save(mrb);
   bitmap_unit picks;
   const struct mgem_spec *mgem = mgems_list;
+
+  gemcut_snapshot_gc_arena(mrb);
+
   p->work_c = alloc_context(mrb);
   for (int i = 0; i < MGEMS_POPULATION; i++, mgem++, picks >>= 1) {
     if (i % MGEMS_UNIT_BITS == 0) {
@@ -308,6 +396,8 @@ gemcut_commit_trial(mrb_state *mrb, mrb_value args)
       }
     }
   }
+
+  gemcut_rollback_gc_arena(mrb);
 
   return mrb_nil_value();
 }
