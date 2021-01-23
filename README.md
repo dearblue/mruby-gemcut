@@ -55,7 +55,7 @@ It is possible to configure individual mruby vm which omits / restricts function
       - `GemCut.commit`
       - `GemCut.available_list`
       - `GemCut.committed_list`
-      - `GemCut.available_sise`
+      - `GemCut.available_size`
       - `GemCut.commit_size`
       - `GemCut.available?(gemname)`
       - `GemCut.committed?(gemname)`
@@ -148,7 +148,7 @@ main(int argc, char *argv[])
 ## Specification
 
   - Package name: mruby-gemcut
-  - Version: 0.2
+  - Version: 0.3
   - Product quality: PROTOTYPE
   - Author: [dearblue](https://github.com/dearblue)
   - Project page: <https://github.com/dearblue/mruby-gemcut>

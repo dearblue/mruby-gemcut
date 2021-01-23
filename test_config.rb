@@ -12,19 +12,14 @@ config = YAML.load <<'YAML'
     - :core: "mruby-bin-mruby"
   builds:
     host:
-      defines: MRB_INT64
+      defines:
       gembox: default
-    #host-int32:
-    #  defines: MRB_INT32
-    #host-nan-int16:
-    #  defines: [MRB_INT16, MRB_NAN_BOXING]
-    #host+:
-    #  defines: [MRB_INT64, MRB_WORD_BOXING]
-    #  c++exception: true
     host++:
       defines: [MRB_INT64, MRB_WORD_BOXING]
       c++abi: true
 YAML
+
+MRuby::Lockfile.disable rescue nil
 
 config["builds"].each_pair do |n, c|
   MRuby::Build.new(n) do |conf|
@@ -49,11 +44,15 @@ config["builds"].each_pair do |n, c|
     gem File.dirname(__FILE__) do |g|
       include_testtools
 
-      if g.cc.command =~ /\b(?:g?ccc|clang)\d*\b/
-        g.cc.flags << "-std=c11" unless c["c++abi"]
-        g.cc.flags << "-pedantic"
-        g.cc.flags << "-Wall"
+      if g.cc.command =~ /\b(?:g?cc|clang)\d*\b/
+        g.cc.flags << (c["c++abi"] ? "-std=c++11" : "-std=c11")
+        g.cc.flags << %w(-Wpedantic -Wall -Wextra)
+        g.cxx.flags << "-std=c++11"
+        g.cxx.flags << %w(-Wpedantic -Wall -Wextra)
       end
     end
+
+    #enable_bintest
+    gem File.join(File.dirname(__FILE__), ".testset")
   end
 end

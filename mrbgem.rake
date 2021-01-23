@@ -17,7 +17,14 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
     def include_testtools
       self.bins = %w(mruby-gemcut-test)
     end
+
+    def add_blacklist(mgem)
+      @blacklist << mgem
+      self
+    end
   end
+
+  @blacklist = []
 
   if cc.command =~ /\b(?:g?cc|clang)d*\b/
     cc.flags << %w(-Wno-declaration-after-statement)
@@ -42,7 +49,12 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
       name = g.name.to_s
       cname = name.gsub(/[^0-9A-Za-z_]+/, "_")
       gindex[name] = i
-      [name, cname, g, g.dependencies.map { |e| e[:gem].to_s }]
+      [name, cname, g, g.dependencies.map { |e| e[:gem].to_s }, !@blacklist.include?(name)]
+    end
+
+    gemcut_max_gems = 60000
+    if gems.size > gemcut_max_gems
+      raise "The allowable gem number in '#{s.name}' has been exceeded (maximum #{gemcut_max_gems})"
     end
 
     unit_bits = 32
@@ -62,7 +74,7 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
 typedef uint32_t bitmap_unit;
 
 #{
-  gems.each_with_object("") { |(name, cname, gem, deps), a|
+  gems.each_with_object("") { |(name, cname, gem, deps, avail), a|
     next unless gem.generate_functions
 
     a << "\n" unless a.empty?
@@ -82,7 +94,7 @@ typedef uint32_t bitmap_unit;
 #endif
 
 #{
-  gems.each_with_object("") { |(name, cname, gem, deps), a|
+  gems.each_with_object("") { |(name, cname, gem, deps, avail), a|
     next if deps.empty?
 
     a << "\n" unless a.empty?
@@ -92,7 +104,7 @@ typedef uint32_t bitmap_unit;
 
 static const struct mgem_spec mgems_list[] = {
   #{
-    gems.each_with_object("").with_index { |((name, cname, gem, deps), a), i|
+    gems.each_with_object("").with_index { |((name, cname, gem, deps, avail), a), i|
       if gem.generate_functions
         init = "GENERATED_TMP_mrb_#{cname}_gem_init"
         final = "GENERATED_TMP_mrb_#{cname}_gem_final"
@@ -109,13 +121,13 @@ static const struct mgem_spec mgems_list[] = {
       no = "/* %3d */" % i
 
       a << ",\n  " unless a.empty?
-      a << %(#{no} { #{name.inspect}, #{init}, #{final}, #{deps.size}, #{depsname} })
+      a << %(#{no} { #{name.inspect}, #{init}, #{final}, #{avail ? "TRUE" : "FALSE"}, #{deps.size}, #{depsname} })
     }
   }
 };
 
 #{
-  gems.each_with_object("") { |(name, cname, gem, deps), a|
+  gems.each_with_object("") { |(name, cname, gem, deps, avail), a|
     next if deps.empty?
 
     deps = deps.map { |d| gindex[d] }.sort
