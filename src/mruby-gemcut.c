@@ -25,7 +25,11 @@ popcount32(uint32_t n)
 }
 
 enum {
+#if MRUBY_RELEASE_NO < 30000
   BIN_SIZE_OFFSET = 10,
+#else
+  BIN_SIZE_OFFSET = 8,
+#endif
   BIN_VERSION_OFFSET = 4,
   BIN_VERSION_SIZE = 4,
   BIN_HEADER_SIZE = 18
@@ -58,12 +62,14 @@ struct mgem_spec
   const struct mgem_spec *const *deps;
 };
 
+#ifndef MRB_PRESYM_SCANNING
 /*
  * HINT:
  *      `<build>/mrbgems/mruby-gemcut/include/mruby-gemcut/deps.h` は
  *      `mruby-gemcut/mrbgem.rake` によって構成ごとに生成される
  */
 #include <mruby-gemcut/deps.h>
+#endif
 
 struct gemcut
 {
@@ -245,14 +251,19 @@ alloc_context(mrb_state *mrb)
   c->stbase = (mrb_value *)mrb_malloc(mrb, context_stack_size * sizeof(*c->stbase));
   /* c->stbase の初期化は setup_context() で行うため省略 */
   c->stend = c->stbase + context_stack_size;
+#if MRUBY_RELEASE_NO < 30000
   c->stack = c->stbase;
+#endif
   c->cibase = (mrb_callinfo *)mrb_calloc(mrb, context_ci_size, sizeof(*c->cibase));
   c->ciend = c->cibase + context_ci_size;
   c->ci = c->cibase;
+#if MRUBY_RELEASE_NO < 30000
   c->ci->stackent = c->stack;
-  //c->ci->proc = mrb->c->ci->proc;
   c->ci->target_class = mrb->object_class;
-  //c->fib = mrb->c->fib;
+#else
+  c->ci->stack = c->stbase;
+  c->ci->u.target_class = mrb->object_class;
+#endif
 
   return c;
 }
