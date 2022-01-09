@@ -52,7 +52,7 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
       [name, cname, g, g.dependencies.map { |e| e[:gem].to_s }, !@blacklist.include?(name)]
     end
 
-    gemcut_max_gems = 60000
+    gemcut_max_gems = 4000
     if gems.size > gemcut_max_gems
       raise "The allowable gem number in '#{s.name}' has been exceeded (maximum #{gemcut_max_gems})"
     end
