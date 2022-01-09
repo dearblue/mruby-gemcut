@@ -1,6 +1,7 @@
 #!ruby
 
 require "fileutils"
+require_relative "buildlib/internals"
 
 MRuby::Gem::Specification.new("mruby-gemcut") do |s|
   s.summary = "runtime reconfigurer for mruby gems"
@@ -11,7 +12,7 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
   s.homepage = "https://github.com/dearblue/mruby-gemcut"
 
   # for `mrb_protect()`
-  add_dependency "mruby-error", core: "mruby-error"
+  add_dependency "mruby-error", core: "mruby-error" if Gemcut.need_error_gem?
 
   class << self
     def include_testtools
