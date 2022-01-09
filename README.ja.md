@@ -183,7 +183,7 @@ mruby_gemcut_commit(mrb2); /* これ以降は mrb2 に対して mruby_gemcut_pic
 ## Specification
 
   - Package name: mruby-gemcut
-  - Version: 0.3
+  - Version: 0.3.1
   - Product quality: PROTOTYPE
   - Author: [dearblue](https://github.com/dearblue)
   - Project page: <https://github.com/dearblue/mruby-gemcut>
