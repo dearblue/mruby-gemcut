@@ -346,8 +346,8 @@ gemcut_rollback_gc_arena(mrb_state *mrb)
     return;
   }
 #else
-  if (arenalen > gc->arena_capa) {
-    mrb_value *p = (mrb_value *)mrb_realloc_simple(mrb, gc->arena, arenalen * sizeof(struct RBasic *));
+  if (arenalen > (size_t)gc->arena_capa) {
+    mrb_value *p = (mrb_value *)mrb_realloc_simple(mrb, gc->arena, arenalen * sizeof(mrb_value));
     if (p == NULL) {
       gemcut_rollback_gc_arena_fallback(mrb, gc, gcarena);
       return;
