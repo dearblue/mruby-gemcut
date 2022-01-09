@@ -74,7 +74,7 @@ struct mgem_spec
   void (*gem_final)(mrb_state *mrb);
   mrb_bool available:1;
   const uint32_t numdeps:16;
-  const struct mgem_spec *const *deps;
+  const uint16_t *deps;
 };
 
 #ifndef MRB_PRESYM_SCANNING
@@ -156,10 +156,8 @@ mruby_gemcut_clear(mrb_state *mrb)
 }
 
 static int
-gemcut_pickup(struct gemcut *gcut, const char name[])
+gemcut_pickup_by_no(struct gemcut *gcut, int gi)
 {
-  int gi = gemcut_lookup(gcut, name);
-  if (gi < 0) { return 1; }
   if (gcut->pickups[gi / MGEMS_UNIT_BITS] & (1 << gi % MGEMS_UNIT_BITS)) {
     return 0;
   }
@@ -170,8 +168,8 @@ gemcut_pickup(struct gemcut *gcut, const char name[])
 
   if (mgem->deps) {
     /* deps を先に再帰的初期化する */
-    FOREACH_NLIST(const struct mgem_spec, *d, mgem->numdeps, *mgem->deps) {
-      int status = gemcut_pickup(gcut, d->name);
+    FOREACH_NLIST(const uint16_t, *d, mgem->numdeps, mgem->deps) {
+      int status = gemcut_pickup_by_no(gcut, *d);
       if (status != 0) {
         return status;
       }
@@ -181,6 +179,14 @@ gemcut_pickup(struct gemcut *gcut, const char name[])
   gcut->pickups[gi / MGEMS_UNIT_BITS] |= 1 << (gi % MGEMS_UNIT_BITS);
 
   return 0;
+}
+
+static int
+gemcut_pickup(struct gemcut *gcut, const char name[])
+{
+  int gi = gemcut_lookup(gcut, name);
+  if (gi < 0) { return 1; }
+  return gemcut_pickup_by_no(gcut, gi);
 }
 
 int

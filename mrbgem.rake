@@ -83,22 +83,14 @@ typedef uint32_t bitmap_unit;
   }
 }
 
-#ifdef __cplusplus
-# define DEPSREF(N)         N()
-# define DEPSDECL(N, E)     static const struct mgem_spec *const *N()
-# define DEPSDEF(N, E, ...) static const struct mgem_spec *const *N() { static const struct mgem_spec *const deps[E] = { __VA_ARGS__ }; return deps; }
-#else
-# define DEPSREF(N)         N
-# define DEPSDECL(N, E)     static const struct mgem_spec *const N[E]
-# define DEPSDEF(N, E, ...) static const struct mgem_spec *const N[E] = { __VA_ARGS__ };
-#endif
-
 #{
   gems.each_with_object("") { |(name, cname, gem, deps, avail), a|
     next if deps.empty?
 
+    deps = deps.map { |d| gindex[d] }.sort
+    deplist = deps.map { |d| %(#{d}) }.join(", ")
     a << "\n" unless a.empty?
-    a << %(DEPSDECL(deps_#{cname}, #{deps.size});)
+    a << %(static const uint16_t deps_#{cname}[] = { #{deplist} };)
   }
 }
 
@@ -115,7 +107,7 @@ static const struct mgem_spec mgems_list[] = {
       if deps.empty?
         depsname = "NULL"
       else
-        depsname = "DEPSREF(deps_#{cname})"
+        depsname = "deps_#{cname}"
       end
 
       no = "/* %3d */" % i
@@ -125,17 +117,6 @@ static const struct mgem_spec mgems_list[] = {
     }
   }
 };
-
-#{
-  gems.each_with_object("") { |(name, cname, gem, deps, avail), a|
-    next if deps.empty?
-
-    deps = deps.map { |d| gindex[d] }.sort
-    deplist = deps.map { |d| %(&mgems_list[#{d}]) }.join(", ")
-    a << "\n" unless a.empty?
-    a << %(DEPSDEF(deps_#{cname}, #{deps.size}, #{deplist}))
-  }
-}
     DEPS_H
   end
 end
