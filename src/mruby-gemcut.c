@@ -308,7 +308,7 @@ struct gemcut_commit_restore
   struct mrb_context *work_c;
 };
 
-#define ID_GCARENA  mrb_intern_lit(mrb, "gcarena@mruby-gemcut-" __DATE__ "-" __TIME__)
+#define ID_GCARENA  mrb_intern_lit(mrb, "gcarena@mruby-gemcut")
 
 static void
 gemcut_snapshot_gc_arena(mrb_state *mrb)
