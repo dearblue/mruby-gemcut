@@ -67,7 +67,7 @@ mruby gem パッケージとして依存したい場合、`mrbgem.rake` に記�
 # mrbgem.rake
 MRuby::Gem::Specification.new("mruby-XXX") do |spec|
   ...
-  spec.add_dependency "mruby-gemcut", github: "dearblue/mruby-gemcut"
+  spec.add_dependency "mruby-gemcut", mgem: "mruby-gemcut"
 end
 ```
 
@@ -77,7 +77,7 @@ end
 
 ```ruby
 MRuby::Build.new do |conf|
-  conf.gem "mruby-gemcut", github: "dearblue/mruby-gemcut"
+  conf.gem "mruby-gemcut", mgem: "mruby-gemcut"
   gemcut_incdir = "ディレクトリをどうにかして取得する"
   conf.cc.include_paths << gemcut_incdir
 end
@@ -94,7 +94,7 @@ end
 
 MRuby::Build.new do |conf|
   ...
-  conf.gem "mruby-gemcut", github: "dearblue/mruby-gemcut" do
+  conf.gem "mruby-gemcut", mgem: "mruby-gemcut" do
     add_blacklist "mruby-io"
     add_blacklist "mruby-socket"
   end
@@ -130,7 +130,7 @@ end
 MRuby::Gem::Specification.new("YOUR-BIN-TOOL") do |spec|
   spec.author = "YOURNAME"
   spec.license = "NYSL" # Likely Public Domain; See http://www.kmonos.net/nysl/
-  spec.add_dependency "mruby-gemcut", github: "dearblue/mruby-gemcut"
+  spec.add_dependency "mruby-gemcut", mgem: "mruby-gemcut"
   spec.bins = %w(YOUR-BIN)
 end
 ```
@@ -183,7 +183,7 @@ mruby_gemcut_commit(mrb2); /* これ以降は mrb2 に対して mruby_gemcut_pic
 ## Specification
 
   - Package name: mruby-gemcut
-  - Version: 0.3
+  - Version: 0.3.1
   - Product quality: PROTOTYPE
   - Author: [dearblue](https://github.com/dearblue)
   - Project page: <https://github.com/dearblue/mruby-gemcut>

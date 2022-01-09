@@ -1,6 +1,7 @@
 #!ruby
 
 require "fileutils"
+require_relative "buildlib/internals"
 
 MRuby::Gem::Specification.new("mruby-gemcut") do |s|
   s.summary = "runtime reconfigurer for mruby gems"
@@ -11,7 +12,7 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
   s.homepage = "https://github.com/dearblue/mruby-gemcut"
 
   # for `mrb_protect()`
-  add_dependency "mruby-error", core: "mruby-error"
+  add_dependency "mruby-error", core: "mruby-error" if Gemcut.need_error_gem?
 
   class << self
     def include_testtools
@@ -52,7 +53,7 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
       [name, cname, g, g.dependencies.map { |e| e[:gem].to_s }, !@blacklist.include?(name)]
     end
 
-    gemcut_max_gems = 60000
+    gemcut_max_gems = 4000
     if gems.size > gemcut_max_gems
       raise "The allowable gem number in '#{s.name}' has been exceeded (maximum #{gemcut_max_gems})"
     end
@@ -83,22 +84,14 @@ typedef uint32_t bitmap_unit;
   }
 }
 
-#ifdef __cplusplus
-# define DEPSREF(N)         N()
-# define DEPSDECL(N, E)     static const struct mgem_spec *const *N()
-# define DEPSDEF(N, E, ...) static const struct mgem_spec *const *N() { static const struct mgem_spec *const deps[E] = { __VA_ARGS__ }; return deps; }
-#else
-# define DEPSREF(N)         N
-# define DEPSDECL(N, E)     static const struct mgem_spec *const N[E]
-# define DEPSDEF(N, E, ...) static const struct mgem_spec *const N[E] = { __VA_ARGS__ };
-#endif
-
 #{
   gems.each_with_object("") { |(name, cname, gem, deps, avail), a|
     next if deps.empty?
 
+    deps = deps.map { |d| gindex[d] }.sort
+    deplist = deps.map { |d| %(#{d}) }.join(", ")
     a << "\n" unless a.empty?
-    a << %(DEPSDECL(deps_#{cname}, #{deps.size});)
+    a << %(static const uint16_t deps_#{cname}[] = { #{deplist} };)
   }
 }
 
@@ -115,7 +108,7 @@ static const struct mgem_spec mgems_list[] = {
       if deps.empty?
         depsname = "NULL"
       else
-        depsname = "DEPSREF(deps_#{cname})"
+        depsname = "deps_#{cname}"
       end
 
       no = "/* %3d */" % i
@@ -125,17 +118,6 @@ static const struct mgem_spec mgems_list[] = {
     }
   }
 };
-
-#{
-  gems.each_with_object("") { |(name, cname, gem, deps, avail), a|
-    next if deps.empty?
-
-    deps = deps.map { |d| gindex[d] }.sort
-    deplist = deps.map { |d| %(&mgems_list[#{d}]) }.join(", ")
-    a << "\n" unless a.empty?
-    a << %(DEPSDEF(deps_#{cname}, #{deps.size}, #{deplist}))
-  }
-}
     DEPS_H
   end
 end
