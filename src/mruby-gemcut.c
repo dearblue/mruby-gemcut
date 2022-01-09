@@ -118,10 +118,12 @@ get_gemcut(mrb_state *mrb)
   struct gemcut *gcut = (struct gemcut *)mrb_data_check_get_ptr(mrb, v, &gemcut_type);
 
   if (gcut == NULL) {
+    int ai = mrb_gc_arena_save(mrb);
     struct RData *d = mrb_data_object_alloc(mrb, NULL, NULL, &gemcut_type);
     d->data = mrb_calloc(mrb, 1, sizeof(struct gemcut));
     mrb_gv_set(mrb, id_gemcut, mrb_obj_value(d));
     gcut = (struct gemcut *)d->data;
+    mrb_gc_arena_restore(mrb, ai);
   }
 
   return gcut;
@@ -138,7 +140,7 @@ get_gemcut_noraise(mrb_state *mrb)
 {
   mrb_bool state;
   mrb_value ret = mrb_protect(mrb, get_gemcut_trial, mrb_nil_value(), &state);
-  if (state || !mrb_cptr_p(ret)) {
+  if (state) {
     return NULL;
   } else {
     return (struct gemcut *)mrb_cptr(ret);
