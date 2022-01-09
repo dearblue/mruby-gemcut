@@ -14,6 +14,8 @@
              &V < _end_;                                                    \
              &V++)                                                          \
 
+#warning "TODO: builtin_list, available_list, committed_list に分ける"
+
 static inline int
 popcount32(uint32_t n)
 {
@@ -135,7 +137,6 @@ struct mgem_spec
   const char *name;
   void (*gem_init)(mrb_state *mrb);
   void (*gem_final)(mrb_state *mrb);
-  mrb_bool available:1;
   const uint32_t numdeps:16;
   const uint16_t *deps;
 };
@@ -156,6 +157,8 @@ struct gemcut
 
   bitmap_unit pickups[MGEMS_BITMAP_UNITS];
   bitmap_unit commits[MGEMS_BITMAP_UNITS];
+
+  const struct gemcut_model *model;
 };
 
 static int
@@ -187,6 +190,8 @@ get_gemcut(mrb_state *mrb)
     mrb_gv_set(mrb, id_gemcut, mrb_obj_value(d));
     gcut = (struct gemcut *)d->data;
     mrb_gc_arena_restore(mrb, ai);
+    gcut->model = &gemcut_models[0];
+    memcpy(gcut->pickups, gemcut_models[0].bundle, sizeof(gemcut_models[0].bundle));
   }
 
   return gcut;
@@ -213,12 +218,73 @@ get_gemcut_noraise(mrb_state *mrb)
   }
 }
 
+MRB_API int
+mruby_gemcut_model_select(mrb_state *mrb, const char model_name[])
+{
+  struct gemcut *gcut = get_gemcut_noraise(mrb);
+  if (gcut == NULL || gcut->gems_committed) { return 1; }
+
+  gcut->model = &gemcut_models[0];
+  if (model_name) {
+    FOREACH_ALIST(const struct gemcut_model, *p, gemcut_models) {
+      if (p->name && strcmp(p->name, model_name) == 0) {
+        gcut->model = p;
+        break;
+      }
+    }
+  }
+
+  memcpy(gcut->pickups, gcut->model->bundle, sizeof(gcut->model->bundle));
+  return (model_name == NULL || gcut->model != &gemcut_models[0]) ? 0 : 1;
+}
+
+MRB_API const char *
+mruby_gemcut_model_name(mrb_state *mrb)
+{
+  struct gemcut *gcut = get_gemcut_noraise(mrb);
+  if (gcut == NULL || gcut->gems_committed) { return NULL; }
+  return gcut->model->name;
+}
+
+MRB_API mrb_value
+mruby_gemcut_model_list(mrb_state *mrb)
+{
+  mrb_value list = mrb_ary_new_capa(mrb, sizeof(gemcut_models) / sizeof(gemcut_models[0]) - 1);
+  FOREACH_ALIST(const struct gemcut_model, *p, gemcut_models) {
+    if (p->name) {
+      mrb_ary_push(mrb, list, mrb_str_new_static(mrb, p->name, strlen(p->name)));
+    }
+  }
+  return list;
+}
+
+MRB_API size_t
+mruby_gemcut_model_size(mrb_state *mrb)
+{
+  return sizeof(gemcut_models) / sizeof(gemcut_models[0]) - 1 /* reject the default */;
+}
+
+MRB_API mrb_bool
+mruby_gemcut_model_p(mrb_state *mrb, const char model_name[])
+{
+  if (model_name) {
+    FOREACH_ALIST(const struct gemcut_model, *p, gemcut_models) {
+      if (p->name && strcmp(p->name, model_name) == 0) {
+        return TRUE;
+      }
+    }
+  }
+
+  return FALSE;
+}
+
 MRB_API void
 mruby_gemcut_clear(mrb_state *mrb)
 {
   struct gemcut *gcut = get_gemcut_noraise(mrb);
   if (gcut == NULL || gcut->gems_committed) { return; }
-  memset(gcut->pickups, 0, sizeof(gcut->pickups));
+  gcut->model = &gemcut_models[0];
+  memcpy(gcut->pickups, gemcut_models[0].bundle, sizeof(gemcut_models[0].bundle));
 }
 
 static int
@@ -230,7 +296,9 @@ gemcut_pickup_by_no(struct gemcut *gcut, int gi)
 
   const struct mgem_spec *mgem = &mgems_list[gi];
 
-  if (!mgem->available) { return 2; }
+  if ((gcut->model->avail[gi / MGEMS_UNIT_BITS] & (1 << (gi % MGEMS_UNIT_BITS))) == 0) {
+    return 2;
+  }
 
   if (mgem->deps) {
     /* deps を先に再帰的初期化する */
@@ -270,8 +338,9 @@ mruby_gemcut_imitate_to(mrb_state *dest, mrb_state *src)
   struct gemcut *gdest = get_gemcut_noraise(dest);
   if (gsrc == NULL || gdest == NULL || gdest->gems_committed) { return 1; }
 
+  gdest->model = gsrc->model;
   for (int i = 0; i < MGEMS_BITMAP_UNITS; i++) {
-    gdest->pickups[i] |= gsrc->pickups[i];
+    gdest->pickups[i] = gsrc->pickups[i];
   }
 
   return 0;
@@ -751,6 +820,41 @@ gemcut_committed_p(mrb_state *mrb, mrb_value self)
 }
 
 static mrb_value
+gemcut_model_name(mrb_state *mrb, mrb_value self)
+{
+  const struct gemcut *g = get_gemcut(mrb);
+  if (g->model && g->model->name) {
+    return mrb_str_new_static(mrb, g->model->name, strlen(g->model->name));
+  } else {
+    return mrb_nil_value();
+  }
+}
+
+static mrb_value
+gemcut_model_size(mrb_state *mrb, mrb_value self)
+{
+  return mrb_fixnum_value(sizeof(gemcut_models) / sizeof(gemcut_models[0]) - 1);
+}
+
+static mrb_value
+gemcut_model_list(mrb_state *mrb, mrb_value self)
+{
+  size_t nmodels = sizeof(gemcut_models) / sizeof(gemcut_models[0]) - 1;
+  mrb_value list = mrb_ary_new_capa(mrb, nmodels);
+  const struct gemcut_model *m = gemcut_models + 1;
+  for (size_t i = nmodels; i > 0; i--, m++) {
+    mrb_ary_push(mrb, list, mrb_str_new_static(mrb, m->name, strlen(m->name)));
+  }
+  return list;
+}
+
+static mrb_value
+gemcut_model_gemlist(mrb_state *mrb, mrb_value self)
+{
+  mrb_raise(mrb, E_NOTIMP_ERROR, "未実装");
+}
+
+static mrb_value
 gemcut_define_module_trial(mrb_state *mrb, void *unused)
 {
   struct gemcut *g = get_gemcut(mrb);
@@ -768,6 +872,10 @@ gemcut_define_module_trial(mrb_state *mrb, void *unused)
   mrb_define_class_method(mrb, gemcut_mod, "commit_size", gemcut_s_commit_size, MRB_ARGS_NONE());
   mrb_define_class_method(mrb, gemcut_mod, "available?", gemcut_available_p, MRB_ARGS_REQ(1));
   mrb_define_class_method(mrb, gemcut_mod, "committed?", gemcut_committed_p, MRB_ARGS_REQ(1));
+  mrb_define_class_method(mrb, gemcut_mod, "model", gemcut_model_name, MRB_ARGS_NONE());
+  mrb_define_class_method(mrb, gemcut_mod, "model_size", gemcut_model_size, MRB_ARGS_NONE());
+  mrb_define_class_method(mrb, gemcut_mod, "model_list", gemcut_model_list, MRB_ARGS_NONE());
+  mrb_define_class_method(mrb, gemcut_mod, "model_gemlist", gemcut_model_gemlist, MRB_ARGS_NONE());
 
   return mrb_nil_value();
 }

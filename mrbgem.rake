@@ -1,7 +1,15 @@
 #!ruby
 
-require "fileutils"
 require_relative "buildlib/internals"
+
+unless Rake::Task.task_defined?("check-mruby-gemcut")
+  desc "generate dependency files for mruby-gemcut"
+  task "check-mruby-gemcut" do
+    puts "mruby-gemcut: Passed your design!"
+  end
+end
+
+using Gemcut::Internals
 
 MRuby::Gem::Specification.new("mruby-gemcut") do |s|
   s.summary = "runtime reconfigurer for mruby gems"
@@ -19,13 +27,42 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
       self.bins = %w(mruby-gemcut-test)
     end
 
-    def add_blacklist(mgem)
-      @blacklist << mgem
+    def add_droplist(*gems)
+      gems.each { |e| e.ensure_string }
+      @models[0].drop.concat gems
+      self
+    end
+    alias add_blacklist add_droplist
+
+    def add_model(name, bundle: nil, pass: nil, drop: nil)
+      name = name.ensure_string
+      raise NameError, "bad empty `name` for model" if name.empty?
+      raise NameError, "already exist model `name` - #{name}" if @models.find { |m| m.name == name }
+
+      bundle = bundle.ensure_array_or_nil
+      pass = pass.ensure_array_or_state
+      drop = drop.ensure_array_or_state
+      raise ArgumentError, "need the `bundle`, `pass` or `drop` parameter" if bundle.empty? && pass.empty? && drop.empty?
+      raise ArgumentError, "the `pass` and `drop` parameter are exclusive" unless pass.empty? || drop.empty?
+
+      case
+      when pass == true
+        drop = false
+      when pass == false
+        drop = true
+      when drop == true
+        pass = false
+      when drop == false
+        pass = true
+      end
+
+      @models << Gemcut::Model.new(name, bundle, pass, drop, caller)
+
       self
     end
   end
 
-  @blacklist = []
+  @models = [Gemcut::Model.new(nil, [], [], [], caller)]
 
   if cc.command =~ /\b(?:g?cc|clang)d*\b/
     cc.flags << %w(-Wno-declaration-after-statement)
@@ -39,23 +76,34 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
   gemcut_o = File.join(build_dir, "src/mruby-gemcut.c").ext(exts.object)
   cc.include_paths << hdrgendir
   file gemcut_o => [File.join(dir, "src/mruby-gemcut.c"), deps_h]
+  task "check-mruby-gemcut" => deps_h
   file deps_h => [__FILE__, File.join(build.build_dir, "mrbgems/gem_init.c")] do |t|
     # NOTE: file タスク中であれば build.gems はすでに依存関係が解決されている状態。
 
     verbose = Rake.respond_to?(:verbose) ? Rake.verbose : $-v
     puts %(GEN   #{t.name}#{verbose ? " (by #{__FILE__})" : nil}\n)
 
-    gindex = {}
-    gems = build.gems.map.with_index do |g, i|
-      name = g.name.to_s
+    gindex = build.gems.each_with_index.with_object({}) { |(g, i), a| a[g.name] = i }
+    gems = build.gems.map do |g|
+      name = "#{g.name}"
       cname = name.gsub(/[^0-9A-Za-z_]+/, "_")
-      gindex[name] = i
-      [name, cname, g, g.dependencies.map { |e| e[:gem].to_s }, !@blacklist.include?(name)]
+      Gemcut::Entry[name, cname, g, g.dependencies.map { |e| gindex[e[:gem].to_s] }.sort]
     end
 
     gemcut_max_gems = 4000
     if gems.size > gemcut_max_gems
       raise "The allowable gem number in '#{s.name}' has been exceeded (maximum #{gemcut_max_gems})"
+    end
+
+    models = @models.dup
+    models.map! do |m|
+      bundle = m.bundle.build_pass_list_for("bundle list", gems, gindex, [], [], m.backtrace)
+      pass = m.pass.build_pass_list_for("pass list", gems, gindex, bundle, (m.name ? models[0].drop : []), m.backtrace)
+      drop = m.drop.build_drop_list_for("drop list", gems, gindex, bundle, m.backtrace)
+      drop |= models[0].drop if m.name
+      bundle.check_conflict_set(gems, drop, %(incorrect GEM contained in both "bundle list" and "drop list"), m.backtrace)
+      pass.check_conflict_set(gems, drop, %(incorrect GEM contained in both "pass list" and "drop list"), m.backtrace)
+      Gemcut::Model.new(m.name, bundle, pass, drop, m.backtrace)
     end
 
     unit_bits = 32
@@ -74,48 +122,69 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
 #define MGEMS_UNIT_BITS #{unit_bits}
 typedef uint32_t bitmap_unit;
 
+struct gemcut_model
+{
+  const char *name;
+  bitmap_unit bundle[MGEMS_BITMAP_UNITS];
+  bitmap_unit avail[MGEMS_BITMAP_UNITS];
+};
+
 #{
-  gems.each_with_object("") { |(name, cname, gem, deps, avail), a|
-    next unless gem.generate_functions
+  gems.each_with_object("") { |g, a|
+    next unless g.gem.generate_functions
 
     a << "\n" unless a.empty?
-    a << "void GENERATED_TMP_mrb_#{cname}_gem_init(mrb_state *);\n" \
-         "void GENERATED_TMP_mrb_#{cname}_gem_final(mrb_state *);"
+    a << "void GENERATED_TMP_mrb_#{g.cname}_gem_init(mrb_state *);\n" \
+         "void GENERATED_TMP_mrb_#{g.cname}_gem_final(mrb_state *);"
   }
 }
 
 #{
-  gems.each_with_object("") { |(name, cname, gem, deps, avail), a|
-    next if deps.empty?
+  gems.each_with_object("") { |g, a|
+    next if g.deps.empty?
 
-    deps = deps.map { |d| gindex[d] }.sort
-    deplist = deps.map { |d| %(#{d}) }.join(", ")
+    deplist = g.deps.map { |d| %(#{d}) }.join(", ")
     a << "\n" unless a.empty?
-    a << %(static const uint16_t deps_#{cname}[] = { #{deplist} };)
+    a << %(static const uint16_t deps_#{g.cname}[] = { #{deplist} };)
   }
 }
 
 static const struct mgem_spec mgems_list[] = {
   #{
-    gems.each_with_object("").with_index { |((name, cname, gem, deps, avail), a), i|
-      if gem.generate_functions
-        init = "GENERATED_TMP_mrb_#{cname}_gem_init"
-        final = "GENERATED_TMP_mrb_#{cname}_gem_final"
+    gems.each_with_object("").with_index { |(g, a), i|
+      if g.gem.generate_functions
+        init = "GENERATED_TMP_mrb_#{g.cname}_gem_init"
+        final = "GENERATED_TMP_mrb_#{g.cname}_gem_final"
       else
         init = final = "NULL"
       end
 
-      if deps.empty?
+      if g.deps.empty?
         depsname = "NULL"
       else
-        depsname = "deps_#{cname}"
+        depsname = "deps_#{g.cname}"
       end
 
       no = "/* %3d */" % i
 
       a << ",\n  " unless a.empty?
-      a << %(#{no} { #{name.inspect}, #{init}, #{final}, #{avail ? "TRUE" : "FALSE"}, #{deps.size}, #{depsname} })
+      a << %(#{no} { #{g.name.inspect}, #{init}, #{final}, #{g.deps.size}, #{depsname} })
     }
+  }
+};
+
+static const struct gemcut_model gemcut_models[] = {
+  #{
+    dest = []
+    models.each do |m|
+      avail = m.pass.empty? ? (gems.size.times.to_a - m.drop) : m.pass
+      bundle = m.bundle.make_bitmap([0] * ((gems.size + 31) / 32))
+      avail = avail.make_bitmap(bundle.dup)
+      bundle = bundle.map { |e| "0x%08xUL" % e }.join(", ")
+      avail = avail.map { |e| "0x%08xUL" % e }.join(", ")
+      dest << "{ #{m.name&.inspect || "NULL"}, { #{bundle} }, { #{avail} } }"
+    end
+    dest.join(",\n  ")
   }
 };
     DEPS_H

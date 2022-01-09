@@ -39,6 +39,37 @@ MRB_API mrb_state *mruby_gemcut_open(mrb_state *imitate_src, int num_names, cons
  */
 MRB_API mrb_state *mruby_gemcut_open_mrb(mrb_state *imitate_src, const void *bin, size_t binsize, mrb_allocf allocator, void *alloc_udata);
 
+/* Gemcut Model API */
+
+/**
+ * `model_name` を適用します。
+ *
+ * `mruby_gemcut_pickup()` を先に呼び出してある場合、状態が取り消されることに注意して下さい。
+ *
+ * Gemcut モデルを初期状態 (選択なし) にしたい場合は `mruby_gemcut_clear()` 関数を呼んで下さい。
+ */
+MRB_API int mruby_gemcut_model_select(mrb_state *mrb, const char model_name[]);
+
+/**
+ * 現在適用中の Gemcut モデル名を取得します。
+ */
+MRB_API const char *mruby_gemcut_model_name(mrb_state *mrb);
+
+/**
+ * ビルド時に組み込まれた Gemcut モデル名の一覧を配列にして返します。
+ */
+MRB_API mrb_value mruby_gemcut_model_list(mrb_state *mrb);
+
+/**
+ * ビルド時に組み込まれた Gemcut モデルの要素数を返します。
+ */
+MRB_API size_t mruby_gemcut_model_size(mrb_state *mrb);
+
+/**
+ * 引数で指定した gemcut model が利用可能かどうかを返します。
+ */
+MRB_API mrb_bool mruby_gemcut_model_p(mrb_state *mrb, const char model_name[]);
+
 /* gem 加工 API */
 
 /**
@@ -48,6 +79,8 @@ MRB_API int mruby_gemcut_imitate_to(mrb_state *dest, mrb_state *src);
 
 /**
  * 現在選択している gems をすべて破棄し、何も選択していない状態にします。
+ *
+ * また、gemcut model を初期状態にします。
  */
 MRB_API void mruby_gemcut_clear(mrb_state *mrb);
 

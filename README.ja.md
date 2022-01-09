@@ -83,11 +83,11 @@ MRuby::Build.new do |conf|
 end
 ```
 
-### ブラックリスト
+### 無効化リスト (ブラックリスト)
 
 `mruby_gemcut_pickup()` 関数や `GemCut.pickup` メソッドによって有効化出来ない mruby gem を指定することが出来ます。
 
-たとえば "mruby-io" と "mruby-socket" をブラックリストに追加したい場合は次のようにします:
+たとえば "mruby-io" と "mruby-socket" を無効化リストに追加したい場合は次のようにします:
 
 ```ruby
 # build_config.rb
