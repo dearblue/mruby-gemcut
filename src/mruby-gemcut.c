@@ -660,7 +660,10 @@ static mrb_value
 gemcut_define_module_trial(mrb_state *mrb, mrb_value opaque)
 {
   struct gemcut *g = get_gemcut(mrb);
-  if (g->module_defined) { mrb_raise(mrb, E_RUNTIME_ERROR, "GemCut module is already defined"); }
+  if (g->module_defined) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "GemCut module is already defined");
+  }
+  g->module_defined = 1;
 
   struct RClass *gemcut_mod = mrb_define_module(mrb, "GemCut");
   mrb_define_class_method(mrb, gemcut_mod, "pickup", gemcut_s_pickup, MRB_ARGS_REQ(1));
@@ -768,9 +771,20 @@ mrb_mruby_gemcut_gem_init(mrb_state *mrb)
    */
 
   struct gemcut *g = get_gemcut(mrb);
-  g->gems_committed = 1;
 
-  if (g->module_defined == 0) { gemcut_define_module_trial(mrb, mrb_nil_value()); }
+  if (g->module_defined == 0) {
+    gemcut_define_module_trial(mrb, mrb_nil_value());
+  }
+  if (g->gems_committed == 0) {
+    bitmap_unit lastmask = ~((bitmap_unit)-1 << (MGEMS_POPULATION & (sizeof(bitmap_unit) * CHAR_BIT - 1)));
+    g->gems_committed = 1;
+    memset(g->pickups, -1, sizeof(g->pickups));
+    memset(g->commits, -1, sizeof(g->commits));
+    if (lastmask != 0) {
+      g->pickups[MGEMS_POPULATION / MGEMS_UNIT_BITS] &= lastmask;
+      g->commits[MGEMS_POPULATION / MGEMS_UNIT_BITS] &= lastmask;
+    }
+  }
 }
 
 void
