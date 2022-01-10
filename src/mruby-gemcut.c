@@ -245,57 +245,6 @@ finalization(mrb_state *mrb)
   }
 }
 
-/* これらの具体的な数値は mruby-fiber からのパクリ */
-enum {
-  context_stack_size = 64,
-  context_ci_size = 8,
-};
-
-static struct mrb_context *
-alloc_context(mrb_state *mrb)
-{
-  /*
-   * XXX: はたしてバージョン間における互換性がどれだけ保たれることやら……。
-   *      mruby 1.2, 1.3, 1.4, 1.4.1, 2.0 は host/bin/mruby-gemcut-test が動作することを確認。
-   */
-  struct mrb_context *c = (struct mrb_context *)mrb_calloc(mrb, 1, sizeof(struct mrb_context));
-  c->stbase = (mrb_value *)mrb_malloc(mrb, context_stack_size * sizeof(*c->stbase));
-  /* c->stbase の初期化は setup_context() で行うため省略 */
-  c->stend = c->stbase + context_stack_size;
-#if MRUBY_RELEASE_NO < 30000
-  c->stack = c->stbase;
-#endif
-  c->cibase = (mrb_callinfo *)mrb_calloc(mrb, context_ci_size, sizeof(*c->cibase));
-  c->ciend = c->cibase + context_ci_size;
-  c->ci = c->cibase;
-#if MRUBY_RELEASE_NO < 30000
-  c->ci->stackent = c->stack;
-  c->ci->target_class = mrb->object_class;
-#else
-  c->ci->stack = c->stbase;
-  c->ci->u.target_class = mrb->object_class;
-#endif
-
-  return c;
-}
-
-static void
-setup_context(mrb_state *mrb, struct mrb_context *c)
-{
-  for (mrb_value *p = c->stbase; p < c->stend; p++) {
-    *p = mrb_nil_value();
-  }
-
-  mrb->c = c;
-}
-
-struct gemcut_commit_restore
-{
-  struct gemcut *gcut;
-  struct mrb_context *orig_c;
-  struct mrb_context *work_c;
-};
-
 #define ID_GCARENA  mrb_intern_lit(mrb, "gcarena@mruby-gemcut")
 
 static void
@@ -369,41 +318,25 @@ gemcut_rollback_gc_arena(mrb_state *mrb)
 static mrb_value
 gemcut_commit_trial(mrb_state *mrb, void *opaque)
 {
-  struct gemcut_commit_restore *p = (struct gemcut_commit_restore *)opaque;
+  struct gemcut *gcut = (struct gemcut *)opaque;
   int ai = mrb_gc_arena_save(mrb);
   bitmap_unit picks;
   const struct mgem_spec *mgem = mgems_list;
 
-  gemcut_snapshot_gc_arena(mrb);
-
-  p->work_c = alloc_context(mrb);
   for (int i = 0; i < MGEMS_POPULATION; i++, mgem++, picks >>= 1) {
     if (i % MGEMS_UNIT_BITS == 0) {
-      picks = p->gcut->pickups[i / MGEMS_UNIT_BITS];
+      picks = gcut->pickups[i / MGEMS_UNIT_BITS];
     }
 
     if (picks & 1) {
       int inv = MGEMS_POPULATION - i - 1;
-      p->gcut->commits[inv / MGEMS_UNIT_BITS] |= 1 << (inv % MGEMS_UNIT_BITS);
+      gcut->commits[inv / MGEMS_UNIT_BITS] |= 1 << (inv % MGEMS_UNIT_BITS);
       if (mgem->gem_init) {
-        setup_context(mrb, p->work_c);
         mgem->gem_init(mrb);
         mrb_gc_arena_restore(mrb, ai);
       }
     }
   }
-
-  gemcut_rollback_gc_arena(mrb);
-
-  return mrb_nil_value();
-}
-
-static mrb_value
-gemcut_commit_restore(mrb_state *mrb, void *opaque)
-{
-  const struct gemcut_commit_restore *p = (struct gemcut_commit_restore *)opaque;
-  mrb->c = p->orig_c;
-  mrb_free_context(mrb, p->work_c);
 
   return mrb_nil_value();
 }
@@ -423,10 +356,10 @@ gemcut_commit(mrb_state *mrb, void *unused)
 
   mrb_state_atexit(mrb, finalization);
 
-  struct gemcut_commit_restore restore = { gcut, mrb->c, NULL };
+  gemcut_snapshot_gc_arena(mrb);
   mrb_bool error;
-  mrb_value ret = mrb_protect_error(mrb, gemcut_commit_trial, &restore, &error);
-  gemcut_commit_restore(mrb, &restore);
+  mrb_value ret = mrb_protect_error(mrb, gemcut_commit_trial, gcut, &error);
+  gemcut_rollback_gc_arena(mrb);
   if (error) {
     mrb_exc_raise(mrb, ret);
   }
