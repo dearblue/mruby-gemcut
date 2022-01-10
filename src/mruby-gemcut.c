@@ -2,7 +2,6 @@
 #include <string.h>
 #include <mruby/irep.h> /* for mrb_load_irep() */
 #include <mruby/dump.h> /* for bin_to_uint32() */
-#include <mruby/error.h> /* for mrb_protect_error() */
 
 #define FOREACH_ALIST(T, V, L)                                              \
         for (T V = (L), *_end_ = (L) + sizeof(L) / sizeof((L)[0]);          \
@@ -24,21 +23,6 @@ popcount32(uint32_t n)
   n += n >> 16;
   return n & 0xff;
 }
-
-#if MRUBY_RELEASE_NO < 20100
-static void
-mrb_obj_freeze(mrb_state *mrb, mrb_value obj)
-{
-  (void)mrb;
-# if MRUBY_RELEASE_NO < 10300
-  (void)obj;
-# else
-  if (!mrb_immediate_p(obj)) {
-    MRB_SET_FROZEN_FLAG(mrb_obj_ptr(obj));
-  }
-# endif
-}
-#endif
 
 enum {
 #if MRUBY_RELEASE_NO < 30000
@@ -67,68 +51,6 @@ aux_load_irep_buf(mrb_state *mrb, const void *bin, size_t binsize)
 
   return 0;
 }
-
-#if defined(MRB_NAN_BOXING) || defined(MRB_WORD_BOXING)
-union gemcut_cptr_wrapper
-{
-  void *ptr;
-  mrb_value val;
-};
-
-union gemcut_cptr_unwrapper
-{
-  mrb_value val;
-  void *ptr;
-};
-
-# if MRUBY_RELEASE_NO >= 30000
-mrb_static_assert1(sizeof(mrb_value) >= sizeof(void *));
-# endif
-
-/*
- * mrb_cptr_value() は NoMemoryError 例外を起こす可能性があるためすり替える
- */
-static mrb_value
-aux_cptr_value(mrb_state *mrb, void *ptr)
-{
-  (void)mrb;
-  union gemcut_cptr_wrapper payload = { ptr };
-  return payload.val;
-}
-
-static void *
-aux_cptr(mrb_value val)
-{
-  union gemcut_cptr_unwrapper payload = { val };
-  return payload.ptr;
-}
-#else
-# define aux_cptr_value mrb_cptr_value
-# define aux_cptr mrb_cptr
-#endif // defined(MRB_NAN_BOXING) || defined(MRB_WORD_BOXING)
-
-#if MRUBY_RELEASE_NO < 30000 || !defined(mrb_as_int)
-typedef mrb_value mrb_protect_error_f(mrb_state *mrb, void *opaque);
-
-struct mrb_protect_error_wrap {
-  mrb_protect_error_f *body;
-  void *opaque;
-};
-
-static mrb_value
-mrb_protect_error_wrap(mrb_state *mrb, mrb_value val)
-{
-  const struct mrb_protect_error_wrap *wrap = (struct mrb_protect_error_wrap *)aux_cptr(val);
-  return wrap->body(mrb, wrap->opaque);
-}
-
-static mrb_value
-mrb_protect_error(mrb_state *mrb, mrb_protect_error_f *body, void *opaque, mrb_bool *error)
-{
-  struct mrb_protect_error_wrap wrap = { body, opaque };
-  return mrb_protect(mrb, mrb_protect_error_wrap, aux_cptr_value(mrb, &wrap), error);
-}
-#endif // MRUBY_RELEASE_NO
 
 struct mgem_spec
 {
