@@ -91,4 +91,61 @@ mrb_protect_error(mrb_state *mrb, mrb_protect_error_f *body, void *opaque, mrb_b
 }
 #endif // AUX_MRUBY_RELEASE_NO
 
+#if AUX_MRUBY_RELEASE_NO >= 30001
+# define AUX_GEM_INIT_ENTER() do
+# define AUX_GEM_INIT_LEAVE() while (0)
+#else
+
+# if AUX_MRUBY_RELEASE_NO < 30000
+#  define AUX_GEM_INIT_ENTER_SUB1()                                     \
+  do {                                                                  \
+    ci->stackent = cx->stack;                                           \
+    ci->target_class = mrb->object_class;                               \
+  } while (0)                                                           \
+
+# else
+#  define AUX_GEM_INIT_ENTER_SUB1()                                     \
+  do {                                                                  \
+    ci->stack = ci[-1].stack;                                           \
+    ci->u.target_class = mrb->object_class;                             \
+  } while (0)                                                           \
+
+# endif
+
+# if AUX_MRUBY_RELEASE_NO < 30000
+#  define AUX_GEM_INIT_LEAVE_SUB1()                                     \
+  do {                                                                  \
+    cx->stack = cx->ci->stackent;                                       \
+  } while (0)                                                           \
+
+# else
+#  define AUX_GEM_INIT_LEAVE_SUB1() do { } while (0)
+# endif
+
+# define AUX_GEM_INIT_ENTER()                                           \
+  do {                                                                  \
+    struct mrb_context *cx = mrb->c;                                    \
+    if (cx->ciend - cx->ci < 3) {                                       \
+      mrb_raise(mrb, E_RUNTIME_ERROR,                                   \
+                "the call stack will not be expanded (limitation by mruby-gemcut)"); \
+    }                                                                   \
+    int ciidx = cx->ci - cx->cibase;                                    \
+    mrb_callinfo *ci = ++cx->ci;                                        \
+    memset(ci, 0, sizeof(*ci));                                         \
+    ci->acc = -1; /* CI_ACC_SKIP */                                     \
+    AUX_GEM_INIT_ENTER_SUB1();                                          \
+    do                                                                  \
+
+# define AUX_GEM_INIT_LEAVE()                                           \
+    while (0);                                                          \
+    if (mrb->c != cx) {                                                 \
+      mrb_raise(mrb, E_RUNTIME_ERROR,                                   \
+                "fiber switching is not supported in mruby-" MRUBY_VERSION " (limitation by mruby-gemcut)"); \
+    }                                                                   \
+    cx->ci = cx->cibase + ciidx;                                        \
+    AUX_GEM_INIT_LEAVE_SUB1();                                          \
+  } while (0)                                                           \
+
+#endif
+
 #endif // MRUBY_GEMCUT_COMPAT_H

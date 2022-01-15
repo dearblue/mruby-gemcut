@@ -332,8 +332,10 @@ gemcut_commit_trial(mrb_state *mrb, void *opaque)
       int inv = MGEMS_POPULATION - i - 1;
       gcut->commits[inv / MGEMS_UNIT_BITS] |= 1 << (inv % MGEMS_UNIT_BITS);
       if (mgem->gem_init) {
-        mgem->gem_init(mrb);
-        mrb_gc_arena_restore(mrb, ai);
+        AUX_GEM_INIT_ENTER() {
+          mgem->gem_init(mrb);
+          mrb_gc_arena_restore(mrb, ai);
+        } AUX_GEM_INIT_LEAVE();
       }
     }
   }
