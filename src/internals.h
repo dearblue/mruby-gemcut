@@ -11,5 +11,6 @@
 #include <mruby/data.h>
 #include <mruby-gemcut.h>
 #include <stdlib.h>
+#include "compat.h"
 
 #endif /* MRUBY_GEMCUT_INTERNALS_H */

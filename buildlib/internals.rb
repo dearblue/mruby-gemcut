@@ -1,4 +1,9 @@
-require "mruby/source"
+begin
+  require "mruby/source"
+rescue LoadError
+  $: << File.join(MRUBY_ROOT, "lib")
+  require "mruby/source"
+end
 
 module Gemcut
   def Gemcut.need_error_gem?

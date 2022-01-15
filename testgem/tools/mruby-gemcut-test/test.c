@@ -19,7 +19,7 @@ load_string(mrb_bool need_module, const char ruby[], int numgemcut, ...)
   if (numgemcut) {
     va_list va;
     va_start(va, numgemcut);
-    for (; numgemcut > 0; numgemcut --) {
+    for (; numgemcut > 0; numgemcut--) {
       mruby_gemcut_pickup(mrb, va_arg(va, const char *));
     }
     va_end(va);
@@ -30,7 +30,11 @@ load_string(mrb_bool need_module, const char ruby[], int numgemcut, ...)
   } else {
     mruby_gemcut_commit(mrb);
   }
-  printf(">> committed gems: %s\n", mrb_str_to_cstr(mrb, mrb_inspect(mrb, mruby_gemcut_committed_list(mrb))));
+  mrb_value gems = mruby_gemcut_committed_list(mrb);
+  if (!mrb_nil_p(gems)) {
+    mrb_funcall_argv(mrb, gems, mrb_intern_cstr(mrb, "sort!"), 0, NULL);
+  }
+  printf(">> committed gems: %s\n", mrb_str_to_cstr(mrb, mrb_inspect(mrb, gems)));
   fflush(stdout);
 
   mrb_value ret = load_string_trial(mrb, mrb_cptr_value(mrb, (void *)(uintptr_t)ruby));
@@ -58,12 +62,11 @@ main(int argc, char *argv[])
   load_string(TRUE, "puts 'pickup required!'", 0);
   load_string(TRUE, "puts 'commit required!'", 1, "mruby-print");
   load_string(TRUE, "GemCut.commit", 1, "mruby-print");
-  load_string(TRUE, "GemCut.commit; p GemCut.committed_list", 1, "mruby-print");
-  load_string(TRUE, "GemCut.commit; puts '%p' % GemCut.committed_list", 3, "mruby-sprintf", "mruby-math", "mruby-print");
+  load_string(TRUE, "GemCut.commit; p GemCut.committed_list.sort", 1, "mruby-print");
+  load_string(TRUE, "GemCut.commit; p GemCut.committed_list.sort", 3, "mruby-sprintf", "mruby-math", "mruby-print");
   load_string(TRUE, "GemCut.commit; p 'mruby-math' => GemCut.committed?('mruby-math')", 3, "mruby-sprintf", "mruby-math", "mruby-print");
-  load_string(TRUE, "GemCut.commit; p 'mruby-io' => GemCut.committed?('mruby-io')", 3, "mruby-sprintf", "mruby-math", "mruby-print");
-  load_string(TRUE, "GemCut.commit; p GemCut.committed_list", 1, "mruby-print");
-  load_string(TRUE, "GemCut.available_list.each { |mgem| GemCut.pickup mgem }; GemCut.commit; p GemCut.committed_list", 0);
+  load_string(TRUE, "GemCut.commit; p 'mruby-string-ext' => !!GemCut.committed?('mruby-string-ext')", 3, "mruby-sprintf", "mruby-math", "mruby-print");
+  load_string(TRUE, "GemCut.commit; p GemCut.committed_list.sort", 1, "mruby-print");
 
   return 0;
 }

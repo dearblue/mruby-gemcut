@@ -2,7 +2,6 @@
 #include <string.h>
 #include <mruby/irep.h> /* for mrb_load_irep() */
 #include <mruby/dump.h> /* for bin_to_uint32() */
-#include <mruby/error.h> /* for mrb_protect_error() */
 
 #define FOREACH_ALIST(T, V, L)                                              \
         for (T V = (L), *_end_ = (L) + sizeof(L) / sizeof((L)[0]);          \
@@ -24,21 +23,6 @@ popcount32(uint32_t n)
   n += n >> 16;
   return n & 0xff;
 }
-
-#if MRUBY_RELEASE_NO < 20100
-static void
-mrb_obj_freeze(mrb_state *mrb, mrb_value obj)
-{
-  (void)mrb;
-# if MRUBY_RELEASE_NO < 10300
-  (void)obj;
-# else
-  if (!mrb_immediate_p(obj)) {
-    MRB_SET_FROZEN_FLAG(mrb_obj_ptr(obj));
-  }
-# endif
-}
-#endif
 
 enum {
 #if MRUBY_RELEASE_NO < 30000
@@ -67,68 +51,6 @@ aux_load_irep_buf(mrb_state *mrb, const void *bin, size_t binsize)
 
   return 0;
 }
-
-#if defined(MRB_NAN_BOXING) || defined(MRB_WORD_BOXING)
-union gemcut_cptr_wrapper
-{
-  void *ptr;
-  mrb_value val;
-};
-
-union gemcut_cptr_unwrapper
-{
-  mrb_value val;
-  void *ptr;
-};
-
-# if MRUBY_RELEASE_NO >= 30000
-mrb_static_assert1(sizeof(mrb_value) >= sizeof(void *));
-# endif
-
-/*
- * mrb_cptr_value() は NoMemoryError 例外を起こす可能性があるためすり替える
- */
-static mrb_value
-aux_cptr_value(mrb_state *mrb, void *ptr)
-{
-  (void)mrb;
-  union gemcut_cptr_wrapper payload = { ptr };
-  return payload.val;
-}
-
-static void *
-aux_cptr(mrb_value val)
-{
-  union gemcut_cptr_unwrapper payload = { val };
-  return payload.ptr;
-}
-#else
-# define aux_cptr_value mrb_cptr_value
-# define aux_cptr mrb_cptr
-#endif // defined(MRB_NAN_BOXING) || defined(MRB_WORD_BOXING)
-
-#if MRUBY_RELEASE_NO < 30000 || !defined(mrb_as_int)
-typedef mrb_value mrb_protect_error_f(mrb_state *mrb, void *opaque);
-
-struct mrb_protect_error_wrap {
-  mrb_protect_error_f *body;
-  void *opaque;
-};
-
-static mrb_value
-mrb_protect_error_wrap(mrb_state *mrb, mrb_value val)
-{
-  const struct mrb_protect_error_wrap *wrap = (struct mrb_protect_error_wrap *)aux_cptr(val);
-  return wrap->body(mrb, wrap->opaque);
-}
-
-static mrb_value
-mrb_protect_error(mrb_state *mrb, mrb_protect_error_f *body, void *opaque, mrb_bool *error)
-{
-  struct mrb_protect_error_wrap wrap = { body, opaque };
-  return mrb_protect(mrb, mrb_protect_error_wrap, aux_cptr_value(mrb, &wrap), error);
-}
-#endif // MRUBY_RELEASE_NO
 
 struct mgem_spec
 {
@@ -323,57 +245,6 @@ finalization(mrb_state *mrb)
   }
 }
 
-/* これらの具体的な数値は mruby-fiber からのパクリ */
-enum {
-  context_stack_size = 64,
-  context_ci_size = 8,
-};
-
-static struct mrb_context *
-alloc_context(mrb_state *mrb)
-{
-  /*
-   * XXX: はたしてバージョン間における互換性がどれだけ保たれることやら……。
-   *      mruby 1.2, 1.3, 1.4, 1.4.1, 2.0 は host/bin/mruby-gemcut-test が動作することを確認。
-   */
-  struct mrb_context *c = (struct mrb_context *)mrb_calloc(mrb, 1, sizeof(struct mrb_context));
-  c->stbase = (mrb_value *)mrb_malloc(mrb, context_stack_size * sizeof(*c->stbase));
-  /* c->stbase の初期化は setup_context() で行うため省略 */
-  c->stend = c->stbase + context_stack_size;
-#if MRUBY_RELEASE_NO < 30000
-  c->stack = c->stbase;
-#endif
-  c->cibase = (mrb_callinfo *)mrb_calloc(mrb, context_ci_size, sizeof(*c->cibase));
-  c->ciend = c->cibase + context_ci_size;
-  c->ci = c->cibase;
-#if MRUBY_RELEASE_NO < 30000
-  c->ci->stackent = c->stack;
-  c->ci->target_class = mrb->object_class;
-#else
-  c->ci->stack = c->stbase;
-  c->ci->u.target_class = mrb->object_class;
-#endif
-
-  return c;
-}
-
-static void
-setup_context(mrb_state *mrb, struct mrb_context *c)
-{
-  for (mrb_value *p = c->stbase; p < c->stend; p++) {
-    *p = mrb_nil_value();
-  }
-
-  mrb->c = c;
-}
-
-struct gemcut_commit_restore
-{
-  struct gemcut *gcut;
-  struct mrb_context *orig_c;
-  struct mrb_context *work_c;
-};
-
 #define ID_GCARENA  mrb_intern_lit(mrb, "gcarena@mruby-gemcut")
 
 static void
@@ -447,41 +318,27 @@ gemcut_rollback_gc_arena(mrb_state *mrb)
 static mrb_value
 gemcut_commit_trial(mrb_state *mrb, void *opaque)
 {
-  struct gemcut_commit_restore *p = (struct gemcut_commit_restore *)opaque;
+  struct gemcut *gcut = (struct gemcut *)opaque;
   int ai = mrb_gc_arena_save(mrb);
   bitmap_unit picks;
   const struct mgem_spec *mgem = mgems_list;
 
-  gemcut_snapshot_gc_arena(mrb);
-
-  p->work_c = alloc_context(mrb);
   for (int i = 0; i < MGEMS_POPULATION; i++, mgem++, picks >>= 1) {
     if (i % MGEMS_UNIT_BITS == 0) {
-      picks = p->gcut->pickups[i / MGEMS_UNIT_BITS];
+      picks = gcut->pickups[i / MGEMS_UNIT_BITS];
     }
 
     if (picks & 1) {
       int inv = MGEMS_POPULATION - i - 1;
-      p->gcut->commits[inv / MGEMS_UNIT_BITS] |= 1 << (inv % MGEMS_UNIT_BITS);
+      gcut->commits[inv / MGEMS_UNIT_BITS] |= 1 << (inv % MGEMS_UNIT_BITS);
       if (mgem->gem_init) {
-        setup_context(mrb, p->work_c);
-        mgem->gem_init(mrb);
-        mrb_gc_arena_restore(mrb, ai);
+        AUX_GEM_INIT_ENTER() {
+          mgem->gem_init(mrb);
+          mrb_gc_arena_restore(mrb, ai);
+        } AUX_GEM_INIT_LEAVE();
       }
     }
   }
-
-  gemcut_rollback_gc_arena(mrb);
-
-  return mrb_nil_value();
-}
-
-static mrb_value
-gemcut_commit_restore(mrb_state *mrb, void *opaque)
-{
-  const struct gemcut_commit_restore *p = (struct gemcut_commit_restore *)opaque;
-  mrb->c = p->orig_c;
-  mrb_free_context(mrb, p->work_c);
 
   return mrb_nil_value();
 }
@@ -501,10 +358,10 @@ gemcut_commit(mrb_state *mrb, void *unused)
 
   mrb_state_atexit(mrb, finalization);
 
-  struct gemcut_commit_restore restore = { gcut, mrb->c, NULL };
+  gemcut_snapshot_gc_arena(mrb);
   mrb_bool error;
-  mrb_value ret = mrb_protect_error(mrb, gemcut_commit_trial, &restore, &error);
-  gemcut_commit_restore(mrb, &restore);
+  mrb_value ret = mrb_protect_error(mrb, gemcut_commit_trial, gcut, &error);
+  gemcut_rollback_gc_arena(mrb);
   if (error) {
     mrb_exc_raise(mrb, ret);
   }
@@ -660,7 +517,7 @@ gemcut_committed_p_trial(mrb_state *mrb, void *opaque)
   if (g->gems_committed == 0) { return mrb_nil_value(); } /* XXX: 例外の方が嬉しいかな？ */
   int index = gemcut_lookup(g, name);
   if (index < 0) { return mrb_nil_value(); }
-  index = MGEMS_BITMAP_UNITS - index - 1;
+  index = MGEMS_POPULATION - index - 1;
   if ((g->commits[index / MGEMS_UNIT_BITS] >> (index % MGEMS_UNIT_BITS)) & 1) {
     return mrb_true_value();
   } else {
