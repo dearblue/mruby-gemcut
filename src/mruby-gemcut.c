@@ -517,7 +517,7 @@ gemcut_committed_p_trial(mrb_state *mrb, void *opaque)
   if (g->gems_committed == 0) { return mrb_nil_value(); } /* XXX: 例外の方が嬉しいかな？ */
   int index = gemcut_lookup(g, name);
   if (index < 0) { return mrb_nil_value(); }
-  index = MGEMS_BITMAP_UNITS - index - 1;
+  index = MGEMS_POPULATION - index - 1;
   if ((g->commits[index / MGEMS_UNIT_BITS] >> (index % MGEMS_UNIT_BITS)) & 1) {
     return mrb_true_value();
   } else {
