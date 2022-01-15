@@ -111,7 +111,7 @@ MRB_API mrb_bool mruby_gemcut_committed_p(mrb_state *mrb, const char name[]);
 /* mruby モジュール API */
 
 /**
- * mruby 空間から利用可能な `GemCut` モジュールを初期化します。
+ * mruby 空間から利用可能な `Gemcut` モジュールを初期化します。
  */
 MRB_API int mruby_gemcut_define_module(mrb_state *mrb);
 

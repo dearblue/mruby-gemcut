@@ -61,12 +61,12 @@ main(int argc, char *argv[])
 
   load_string(TRUE, "puts 'pickup required!'", 0);
   load_string(TRUE, "puts 'commit required!'", 1, "mruby-print");
-  load_string(TRUE, "GemCut.commit", 1, "mruby-print");
-  load_string(TRUE, "GemCut.commit; p GemCut.committed_list.sort", 1, "mruby-print");
-  load_string(TRUE, "GemCut.commit; p GemCut.committed_list.sort", 3, "mruby-sprintf", "mruby-math", "mruby-print");
-  load_string(TRUE, "GemCut.commit; p 'mruby-math' => GemCut.committed?('mruby-math')", 3, "mruby-sprintf", "mruby-math", "mruby-print");
-  load_string(TRUE, "GemCut.commit; p 'mruby-string-ext' => !!GemCut.committed?('mruby-string-ext')", 3, "mruby-sprintf", "mruby-math", "mruby-print");
-  load_string(TRUE, "GemCut.commit; p GemCut.committed_list.sort", 1, "mruby-print");
+  load_string(TRUE, "Gemcut.commit", 1, "mruby-print");
+  load_string(TRUE, "Gemcut.commit; p Gemcut.committed_list.sort", 1, "mruby-print");
+  load_string(TRUE, "Gemcut.commit; p Gemcut.committed_list.sort", 3, "mruby-sprintf", "mruby-math", "mruby-print");
+  load_string(TRUE, "Gemcut.commit; p 'mruby-math' => Gemcut.committed?('mruby-math')", 3, "mruby-sprintf", "mruby-math", "mruby-print");
+  load_string(TRUE, "Gemcut.commit; p 'mruby-string-ext' => !!Gemcut.committed?('mruby-string-ext')", 3, "mruby-sprintf", "mruby-math", "mruby-print");
+  load_string(TRUE, "Gemcut.commit; p Gemcut.committed_list.sort", 1, "mruby-print");
 
   return 0;
 }

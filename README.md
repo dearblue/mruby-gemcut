@@ -45,20 +45,20 @@ It is possible to configure individual mruby vm which omits / restricts function
         Make sure that gem is initialized.
   - mruby module API
       - `MRB_API int mruby_gemcut_define_module (mrb_state * mrb);`  
-        Initialize the available `GemCut` module from mruby space.  
+        Initialize the available `Gemcut` module from mruby space.  
         If you want to use the gemcut mruby API, you need to call this function.
 
 ### gemcut mruby API
 
-  - `module GemCut`
-      - `GemCut.pickup(gemname)`
-      - `GemCut.commit`
-      - `GemCut.available_list`
-      - `GemCut.committed_list`
-      - `GemCut.available_size`
-      - `GemCut.commit_size`
-      - `GemCut.available?(gemname)`
-      - `GemCut.committed?(gemname)`
+  - `module Gemcut`
+      - `Gemcut.pickup(gemname)`
+      - `Gemcut.commit`
+      - `Gemcut.available_list`
+      - `Gemcut.committed_list`
+      - `Gemcut.available_size`
+      - `Gemcut.commit_size`
+      - `Gemcut.available?(gemname)`
+      - `Gemcut.committed?(gemname)`
 
 
 ## How to install

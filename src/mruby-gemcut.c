@@ -612,11 +612,11 @@ gemcut_define_module_trial(mrb_state *mrb, void *unused)
 {
   struct gemcut *g = get_gemcut(mrb);
   if (g->module_defined) {
-    mrb_raise(mrb, E_RUNTIME_ERROR, "GemCut module is already defined");
+    mrb_raise(mrb, E_RUNTIME_ERROR, "Gemcut module is already defined");
   }
   g->module_defined = 1;
 
-  struct RClass *gemcut_mod = mrb_define_module(mrb, "GemCut");
+  struct RClass *gemcut_mod = mrb_define_module(mrb, "Gemcut");
   mrb_define_class_method(mrb, gemcut_mod, "pickup", gemcut_s_pickup, MRB_ARGS_REQ(1));
   mrb_define_class_method(mrb, gemcut_mod, "commit", gemcut_s_commit, MRB_ARGS_NONE());
   mrb_define_class_method(mrb, gemcut_mod, "available_list", gemcut_s_available_list, MRB_ARGS_NONE());

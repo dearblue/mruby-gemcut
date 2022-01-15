@@ -43,20 +43,20 @@
         gem が初期化されているかどうか確認します。
   - mruby モジュール API
       - `MRB_API int mruby_gemcut_define_module(mrb_state *mrb);`  
-        mruby 空間から利用可能な `GemCut` モジュールを初期化します。  
+        mruby 空間から利用可能な `Gemcut` モジュールを初期化します。  
         gemcut mruby API を用いたい場合はこの関数の呼び出しが必要です。
 
 ### gemcut mruby API
 
-  - `module GemCut`
-      - `GemCut.pickup(gemname)`
-      - `GemCut.commit`
-      - `GemCut.available_list`
-      - `GemCut.committed_list`
-      - `GemCut.available_size`
-      - `GemCut.commit_size`
-      - `GemCut.available?(gemname)`
-      - `GemCut.committed?(gemname)`
+  - `module Gemcut`
+      - `Gemcut.pickup(gemname)`
+      - `Gemcut.commit`
+      - `Gemcut.available_list`
+      - `Gemcut.committed_list`
+      - `Gemcut.available_size`
+      - `Gemcut.commit_size`
+      - `Gemcut.available?(gemname)`
+      - `Gemcut.committed?(gemname)`
 
 
 ## くみこみかた
@@ -85,7 +85,7 @@ end
 
 ### ブラックリスト
 
-`mruby_gemcut_pickup()` 関数や `GemCut.pickup` メソッドによって有効化出来ない mruby gem を指定することが出来ます。
+`mruby_gemcut_pickup()` 関数や `Gemcut.pickup` メソッドによって有効化出来ない mruby gem を指定することが出来ます。
 
 たとえば "mruby-io" と "mruby-socket" をブラックリストに追加したい場合は次のようにします:
 
@@ -101,7 +101,7 @@ MRuby::Build.new do |conf|
 end
 ```
 
-この設定でビルドしたバイナリは、`mruby_gemcut_pickup(mrb, "mruby-io")` や `GemCut.pickup("mruby-socket")` するとエラーが返ったり、例外が発生したりします。
+この設定でビルドしたバイナリは、`mruby_gemcut_pickup(mrb, "mruby-io")` や `Gemcut.pickup("mruby-socket")` するとエラーが返ったり、例外が発生したりします。
 
 ただし `mruby_open()` や `mruby_open_alloc()` を制限するものではないことに注意して下さい。
 
