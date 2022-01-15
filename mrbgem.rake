@@ -15,10 +15,6 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
   add_dependency "mruby-error", core: "mruby-error" if Gemcut.need_error_gem?
 
   class << self
-    def include_testtools
-      self.bins = %w(mruby-gemcut-test)
-    end
-
     def add_blacklist(mgem)
       @blacklist << mgem
       self
