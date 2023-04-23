@@ -74,9 +74,16 @@ typedef uint32_t bitmap_unit;
   gems.each_with_object("") { |(name, cname, gem, deps, avail), a|
     next unless gem.generate_functions
 
-    a << "\n" unless a.empty?
-    a << "void GENERATED_TMP_mrb_#{cname}_gem_init(mrb_state *);\n" \
-         "void GENERATED_TMP_mrb_#{cname}_gem_final(mrb_state *);"
+    if a.empty?
+      a << <<~DEF
+        #define NULL_GEMFUNC_PAIR() NULL, NULL
+        #define MAKE_GEMFUNC_PAIR(CNAME) GENERATED_TMP_mrb_ ## CNAME ## _gem_init, GENERATED_TMP_mrb_ ## CNAME ## _gem_final
+        typedef void init_final_f(mrb_state *);
+      DEF
+    else
+      a << "\n"
+    end
+    a << "init_final_f MAKE_GEMFUNC_PAIR(#{cname});" \
   }
 }
 
@@ -95,10 +102,9 @@ static const struct mgem_spec mgems_list[] = {
   #{
     gems.each_with_object("").with_index { |((name, cname, gem, deps, avail), a), i|
       if gem.generate_functions
-        init = "GENERATED_TMP_mrb_#{cname}_gem_init"
-        final = "GENERATED_TMP_mrb_#{cname}_gem_final"
+        funcpair = "MAKE_GEMFUNC_PAIR(#{cname})"
       else
-        init = final = "NULL"
+        funcpair = "NULL_GEMFUNC_PAIR()"
       end
 
       if deps.empty?
@@ -110,7 +116,7 @@ static const struct mgem_spec mgems_list[] = {
       no = "/* %3d */" % i
 
       a << ",\n  " unless a.empty?
-      a << %(#{no} { #{name.inspect}, #{init}, #{final}, #{avail ? "TRUE" : "FALSE"}, #{deps.size}, #{depsname} })
+      a << %(#{no} { #{name.inspect}, #{funcpair}, #{avail ? "TRUE" : "FALSE"}, #{deps.size}, #{depsname} })
     }
   }
 };
