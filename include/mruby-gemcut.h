@@ -6,114 +6,102 @@
 
 MRB_BEGIN_DECL
 
-/* oneshot gem cut API */
+/* 初期化 API */
 
 /**
- * この補助関数は新しい mruby vm を新たに作成し、複数の gem をまとめてコミットして、作成した mruby vm を返します。
+ *  +Gemcut+ モジュールを定義します。
  *
- * gemcut のための模倣したい mruby vm を与えた場合、`mruby_gemcut_imitate_to()` が呼ばれます。
- *
- * 処理の流れとしては次のようになります:
- *
- * * `mrb_open_core()`
- * * `mruby_gemcut_imitate_to()`
- * * `mruby_gemcut_pickup()`
- * * `mruby_gemcut_commit()`
- * * return with `mrb_state *`
+ *  これは `mrb_open_core()` を行った後で使えます。
+ *  `mrb_open()` の後では呼び出しても何も行いません。
  */
-MRB_API mrb_state *mruby_gemcut_open(mrb_state *imitate_src, int num_names, const char *name_table[], mrb_allocf allocator, void *alloc_udata);
-
-/**
- * この補助関数は新しい mruby vm を新たに作成し、gem cut を行う前に mruby バイナリを実行して、作成した mruby vm を返します。
- *
- * gemcut のための模倣したい mruby vm を与えた場合、事前に `mruby_gemcut_imitate_to()` が呼ばれます。
- *
- * 処理の流れとしては次のようになります:
- *
- * * `mrb_open_core()`
- * * `mruby_gemcut_imitate_to()`
- * * `mruby_gemcut_define_module()`
- * * `mrb_load_irep()`
- * * `mruby_gemcut_commit()`
- * * return with `mrb_state *`
- */
-MRB_API mrb_state *mruby_gemcut_open_mrb(mrb_state *imitate_src, const void *bin, size_t binsize, mrb_allocf allocator, void *alloc_udata);
+MRB_API void mruby_gemcut_define_module(mrb_state *mrb);
 
 /* gem 加工 API */
 
 /**
- * `src` が選択した gems を `dest` に転写します。
+ * 引数 +name+ に対する gem を初期化し、利用可能な状態にします。
+ * 依存関係にある gem も同時に初期化されます。
+ *
+ * 初期化に成功すれば +true+ を返します。すでに初期化されている場合は +false+ を返します。
+ *
+ * この関数は例外を発生させる場合がありますが、<tt>mrb->jmp == NULL</tt> の場合は発生した例外オブジェクトを返します。
  */
-MRB_API int mruby_gemcut_imitate_to(mrb_state *dest, mrb_state *src);
+MRB_API mrb_value mruby_gemcut_require(mrb_state *mrb, const char *name);
 
 /**
- * 現在選択している gems をすべて破棄し、何も選択していない状態にします。
- */
-MRB_API void mruby_gemcut_clear(mrb_state *mrb);
-
-/**
- * `name` 引数に一致する gem を選択状態にします。
+ * +src+ で有効化されている gems を +dest+ でも利用可能なように写します。
+ * すでに初期化されている gems はそのまま利用可能です。
  *
- * `name` は大文字小文字を区別します。
- */
-MRB_API int mruby_gemcut_pickup(mrb_state *mrb, const char name[]);
-
-/**
- * 複数の gem 名をまとめて与えることの出来る `mruby_gemcut_pickup()` 関数です。
+ * 成功すれば +nil+ を返します。
  *
- * 途中でエラーが起きても続行しますが、その場合は `1` を返します。
- *
- * 正常であれば `0` を返します。
+ * この関数は例外を発生させる場合がありますが、<tt>mrb->jmp == NULL</tt> の場合は発生した例外オブジェクトを返します。
  */
-MRB_API int mruby_gemcut_pickup_multi(mrb_state *mrb, int num_names, const char *name_table[]);
-
-/**
- * 現在選択している gems を利用可能なように初期化します。
- *
- * この関数を呼び出した後は、再びこの関数を呼び出すことは出来ません。
- */
-MRB_API struct RException *mruby_gemcut_commit(mrb_state *mrb);
+MRB_API mrb_value mruby_gemcut_imitate_to(mrb_state *dest, mrb_state *src);
 
 /* 状態取得 API */
 
 /**
- * 利用可能な、`build_config.rb` で含めてある gems の名前を配列で返します。
- */
-MRB_API mrb_value mruby_gemcut_available_list(mrb_state *mrb);
-
-/**
- * `mruby_gemcut_commit()` して初期化された gems の名前の配列を返します。
- */
-MRB_API mrb_value mruby_gemcut_committed_list(mrb_state *mrb);
-
-/**
- * 利用可能な、`build_config.rb` で含めてある gems の数を返します。
- */
-MRB_API int mruby_gemcut_available_size(mrb_state *mrb);
-
-/**
- * `mruby_gemcut_commit()` して初期化された gems の数を返します。
- */
-MRB_API int mruby_gemcut_commit_size(mrb_state *mrb);
-
-/**
- * gem が利用可能かどうか確認します。
- */
-MRB_API mrb_bool mruby_gemcut_available_p(mrb_state *mrb, const char name[]);
-
-/**
- * gem が初期化されているかどうか確認します。
+ * +Gemcut.require+ して有効となった gem 名の配列を返します。
  *
- * `name` に対して `NULL` を与えた場合、コミットされていれば真を、コミット前であれば偽を返します。
+ * この関数は例外を発生させる場合がありますが、<tt>mrb->jmp == NULL</tt> の場合は +nil+ を返します。
  */
-MRB_API mrb_bool mruby_gemcut_committed_p(mrb_state *mrb, const char name[]);
+MRB_API mrb_value mruby_gemcut_loaded_features(mrb_state *mrb);
+
+/**
+ * +Gemcut.require+ して有効となった gem の数を返します。
+ *
+ * この関数は例外を発生させる場合がありますが、<tt>mrb->jmp == NULL</tt> の場合は +-1+ を返します。
+ */
+MRB_API int mruby_gemcut_loaded_count(mrb_state *mrb);
+
+/**
+ * 引数 +name+ に一致する gem が +Gemcut.require+ によって有効化しているかどうかを真偽値で返します。
+ *
+ * この関数は例外を発生させる場合がありますが、<tt>mrb->jmp == NULL</tt> の場合は +false+ を返します。
+ */
+MRB_API mrb_bool mruby_gemcut_loaded_p(mrb_state *mrb, const char *name);
+
+/**
+ * +Gemcut.require+ して利用可能に出来る gem 名の配列を返します。
+ *
+ * この関数は例外を発生させる場合がありますが、<tt>mrb->jmp == NULL</tt> の場合は +nil+ を返します。
+ */
+MRB_API mrb_value mruby_gemcut_loadable_features(mrb_state *mrb);
+
+/**
+ * +Gemcut.require+ して利用可能に出来る gem の数を返します。
+ *
+ * この関数は例外を発生させる場合がありますが、<tt>mrb->jmp == NULL</tt> の場合は +-1+ を返します。
+ */
+MRB_API int mruby_gemcut_loadable_count(mrb_state *mrb);
+
+/**
+ * 引数 +name+ に一致する gem が +Gemcut.require+ によって有効化可能かどうかを真偽値で返します。
+ *
+ * この関数は例外を発生させる場合がありますが、<tt>mrb->jmp == NULL</tt> の場合は +false+ を返します。
+ */
+MRB_API mrb_bool mruby_gemcut_loadable_p(mrb_state *mrb, const char *name);
 
 /* mruby モジュール API */
 
 /**
- * mruby 空間から利用可能な `Gemcut` モジュールを初期化します。
+ * 以後の +mruby_gemcut_require()+ や +Gemcut.require+ を封印します。
+ * 呼び出した場合は +Exception+ 例外が発生するようになります。
+ * ※CRuby において +Exception+ は +SecurityError+ の親クラスです。
+ *
+ * この関数は例外を発生させる場合がありますが、<tt>mrb->jmp == NULL</tt> の場合は制御を関数の呼び出し元に戻します。
  */
-MRB_API int mruby_gemcut_define_module(mrb_state *mrb);
+MRB_API void mruby_gemcut_lock(mrb_state *mrb);
+
+/**
+ * 以後の +mruby_gemcut_require()+ や +Gemcut.require+ を封印します。
+ * また、+Gemcut+ モジュールの状態取得 API メソッドも封印されます。
+ * 呼び出した場合は +Exception+ 例外が発生するようになります。
+ * ※CRuby において +Exception+ は +SecurityError+ の親クラスです。
+ *
+ * この関数は例外を発生させる場合がありますが、<tt>mrb->jmp == NULL</tt> の場合は制御を関数の呼び出し元に戻します。
+ */
+MRB_API void mruby_gemcut_seal(mrb_state *mrb);
 
 MRB_END_DECL
 

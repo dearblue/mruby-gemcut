@@ -29,6 +29,14 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
     cc.flags << %w(-Wno-declaration-after-statement)
   end
 
+  if MRuby::Build.instance_method(:print_build_summary).source_location[0] =~ %r(/mrbgem\.rake$)
+  #if gg = build.gems.find { _1.name == "mruby-require" && _1.authors&.flatten&.include?("mattn") }
+    $stderr.puts <<~WARN
+      \e[1m[[ #{__FILE__} ]]\e[m
+      | mruby-gemcut may be a bad match for mattn/mruby-require (or forks).
+    WARN
+  end
+
   make_depsfile_task
   make_geminit_task
 end

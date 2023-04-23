@@ -4,13 +4,6 @@
 #include <mruby/string.h>
 #include <stdarg.h>
 
-static mrb_value
-load_string_trial(mrb_state *mrb, mrb_value obj)
-{
-  const char *ruby = (const char *)mrb_cptr(obj);
-  return mrb_load_string(mrb, ruby);
-}
-
 static void
 load_string(mrb_bool need_module, const char ruby[], int numgemcut, ...)
 {
@@ -20,24 +13,22 @@ load_string(mrb_bool need_module, const char ruby[], int numgemcut, ...)
     va_list va;
     va_start(va, numgemcut);
     for (; numgemcut > 0; numgemcut--) {
-      mruby_gemcut_pickup(mrb, va_arg(va, const char *));
+      mruby_gemcut_require(mrb, va_arg(va, const char *));
     }
     va_end(va);
   }
 
   if (need_module) {
-    mruby_gemcut_define_module(mrb);
-  } else {
-    mruby_gemcut_commit(mrb);
+    mruby_gemcut_require(mrb, "mruby-gemcut");
   }
-  mrb_value gems = mruby_gemcut_committed_list(mrb);
+  mrb_value gems = mruby_gemcut_loaded_features(mrb);
   if (!mrb_nil_p(gems)) {
     mrb_funcall_argv(mrb, gems, mrb_intern_cstr(mrb, "sort!"), 0, NULL);
   }
-  printf(">> committed gems: %s\n", mrb_str_to_cstr(mrb, mrb_inspect(mrb, gems)));
+  printf(">> loaded gems: %s\n", mrb_str_to_cstr(mrb, mrb_inspect(mrb, gems)));
   fflush(stdout);
 
-  mrb_value ret = load_string_trial(mrb, mrb_cptr_value(mrb, (void *)(uintptr_t)ruby));
+  mrb_value ret = mrb_load_string(mrb, ruby);
   if (mrb->exc) { ret = mrb_obj_value(mrb->exc); }
   if (mrb_exception_p(ret)) {
     ret = mrb_inspect(mrb, ret);
@@ -59,14 +50,15 @@ main(int argc, char *argv[])
   load_string(FALSE, "p Math.sin 5", 1, "mruby-math");
   load_string(FALSE, "p Math.sin 5", 2, "mruby-math", "mruby-print");
 
-  load_string(TRUE, "puts 'pickup required!'", 0);
-  load_string(TRUE, "puts 'commit required!'", 1, "mruby-print");
-  load_string(TRUE, "Gemcut.commit", 1, "mruby-print");
-  load_string(TRUE, "Gemcut.commit; p Gemcut.committed_list.sort", 1, "mruby-print");
-  load_string(TRUE, "Gemcut.commit; p Gemcut.committed_list.sort", 3, "mruby-sprintf", "mruby-math", "mruby-print");
-  load_string(TRUE, "Gemcut.commit; p 'mruby-math' => Gemcut.committed?('mruby-math')", 3, "mruby-sprintf", "mruby-math", "mruby-print");
-  load_string(TRUE, "Gemcut.commit; p 'mruby-string-ext' => !!Gemcut.committed?('mruby-string-ext')", 3, "mruby-sprintf", "mruby-math", "mruby-print");
-  load_string(TRUE, "Gemcut.commit; p Gemcut.committed_list.sort", 1, "mruby-print");
+  load_string(TRUE, "p Gemcut.loaded_features.sort", 1, "mruby-print");
+  load_string(TRUE, "p Gemcut.loaded_features.sort", 3, "mruby-sprintf", "mruby-math", "mruby-print");
+  load_string(TRUE, "p 'mruby-math' => Gemcut.loaded_feature?('mruby-math')", 2, "mruby-math", "mruby-print");
+  load_string(TRUE, "Gemcut.require 'mruby-sprintf'; p Gemcut.loaded_features.sort", 2, "mruby-math", "mruby-print");
+  load_string(TRUE, "p 'mruby-string-ext' => Gemcut.loaded_feature?('mruby-string-ext')", 3, "mruby-sprintf", "mruby-math", "mruby-print");
+
+  load_string(FALSE, "Gemcut.require 'mruby-gemcut'; Gemcut.require 'mruby-print'; p Gemcut.loaded_features.sort", 0);
+  load_string(TRUE, "Gemcut.require 'mruby-gemcut'; Gemcut.require 'mruby-print'; p Gemcut.loaded_features.sort", 0);
+  load_string(TRUE, "Gemcut.require 'mruby-hash-ext'; Gemcut.require 'mruby-print'; p Gemcut.loaded_features.sort", 0);
 
   return 0;
 }

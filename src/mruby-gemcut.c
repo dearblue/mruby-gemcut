@@ -1,4 +1,5 @@
 #include "internals.h"
+#include <stdbool.h>
 #include <string.h>
 #include <mruby/irep.h> /* for mrb_load_irep() */
 #include <mruby/dump.h> /* for bin_to_uint32() */
@@ -24,33 +25,29 @@ popcount32(uint32_t n)
   return n & 0xff;
 }
 
-enum {
-#if MRUBY_RELEASE_NO < 30000
-  BIN_SIZE_OFFSET = 10,
-#else
-  BIN_SIZE_OFFSET = 8,
-#endif
-  BIN_VERSION_OFFSET = 4,
-  BIN_VERSION_SIZE = 4,
-  BIN_HEADER_SIZE = 18
-};
+#define DEFINE_PROTECTED_FUNCTION(DECL, CALLER, ARG, EXTRACTOR, ERR)    \
+  DECL                                                                  \
+  {                                                                     \
+    if (mrb->jmp) {                                                     \
+      mrb_value ret = CALLER(mrb, (void *)(uintptr_t)ARG);              \
+      (void)ret;                                                        \
+      return EXTRACTOR(ret);                                            \
+    } else {                                                            \
+      mrb_bool err;                                                     \
+      mrb_value ret = mrb_protect_error(mrb, CALLER, (void *)(uintptr_t)ARG, &err); \
+      (void)ret;                                                        \
+      if (err) {                                                        \
+        return ERR;                                                     \
+      } else {                                                          \
+        return EXTRACTOR(ret);                                          \
+      }                                                                 \
+    }                                                                   \
+  }                                                                     \
 
-static int
-aux_load_irep_buf(mrb_state *mrb, const void *bin, size_t binsize)
-{
-  const uint8_t *p = (const uint8_t *)bin;
-
-  if (binsize < BIN_HEADER_SIZE) { return 1; }
-  if (memcmp(p + BIN_VERSION_OFFSET, RITE_BINARY_FORMAT_VER, BIN_VERSION_SIZE) != 0) { return 1; }
-  uint32_t declsize = bin_to_uint32(p + BIN_SIZE_OFFSET);
-  if (binsize < declsize) { return 1; }
-
-  mrb->exc = NULL;
-  mrb_load_irep(mrb, p);
-  if (mrb->exc) { return 1; }
-
-  return 0;
-}
+#define RESULT_PASSTHROUGH(V) (V)
+#define RESULT_VOID(V)
+#define RESULT_VOID_ERROR
+#define RESULT_TO_ZERO(V) 0
 
 struct mgem_spec
 {
@@ -71,17 +68,51 @@ struct mgem_spec
 #include <mruby-gemcut/deps.h>
 #endif
 
-struct gemcut
-{
-  uint32_t gems_committed:1;
-  uint32_t module_defined:1;
+#if MRUBY_RELEASE_NO < 30000 || defined(MRB_NO_PRESYM)
+# define NO_PRESYM(...) do { __VA_ARGS__; } while (0)
+#else
+# define NO_PRESYM(...) do { } while (0)
+#endif
 
-  bitmap_unit pickups[MGEMS_BITMAP_UNITS];
-  bitmap_unit commits[MGEMS_BITMAP_UNITS];
+enum gemcut_status {
+  gemcut_normal = 0,
+  gemcut_locked = 1,
+  gemcut_sealed = 2,
 };
 
+struct gemcut
+{
+  bool set_atexit:1;
+  bool defined_module:1;
+  enum gemcut_status status:2;
+  bitmap_unit loaded[MGEMS_BITMAP_UNITS];
+};
+
+static bool
+gemcut_loaded_p_by_id(const struct gemcut *g, int id)
+{
+  mrb_assert(id < MGEMS_POPULATION);
+
+  if (id < 0) {
+    return false;
+  }
+
+  int inv = MGEMS_POPULATION - id - 1;
+
+  return ((g->loaded[inv / MGEMS_UNIT_BITS] >> (inv % MGEMS_UNIT_BITS)) & 1) ? true : false;
+}
+
+static void
+gemcut_set_loaded_by_id(struct gemcut *g, int id)
+{
+  mrb_assert(id >= 0 && id < MGEMS_POPULATION);
+
+  int inv = MGEMS_POPULATION - id - 1;
+  g->loaded[inv / MGEMS_UNIT_BITS] |= 1UL << (inv % MGEMS_UNIT_BITS);
+}
+
 static int
-gemcut_lookup(const struct gemcut *g, const char name[])
+gemcut_lookup(const char name[])
 {
   FOREACH_ALIST(const struct mgem_spec, *mgem, mgems_list) {
     if (strcmp(name, mgem->name) == 0) {
@@ -96,30 +127,35 @@ gemcut_lookup(const struct gemcut *g, const char name[])
 
 static const mrb_data_type gemcut_type = { "mruby-gemcut", mrb_free };
 
-static struct gemcut *
-get_gemcut(mrb_state *mrb)
+static mrb_value
+get_gemcut_main(mrb_state *mrb, struct gemcut **gcutp)
 {
   mrb_value v = mrb_gv_get(mrb, id_gemcut);
-  struct gemcut *gcut = (struct gemcut *)mrb_data_check_get_ptr(mrb, v, &gemcut_type);
+  *gcutp = (struct gemcut *)mrb_data_check_get_ptr(mrb, v, &gemcut_type);
 
-  if (gcut == NULL) {
+  if (*gcutp == NULL) {
     int ai = mrb_gc_arena_save(mrb);
+
+    mrb_intern_lit(mrb, "LoadError");
+    mrb_define_class(mrb, "LoadError", mrb_class_get(mrb, "ScriptError"));
+
     struct RData *d = mrb_data_object_alloc(mrb, NULL, NULL, &gemcut_type);
     d->data = mrb_calloc(mrb, 1, sizeof(struct gemcut));
     mrb_gv_set(mrb, id_gemcut, mrb_obj_value(d));
-    gcut = (struct gemcut *)d->data;
+    *gcutp = (struct gemcut *)d->data;
     mrb_gc_arena_restore(mrb, ai);
+    v = mrb_obj_value(d);
   }
 
-  return gcut;
+  return v;
 }
 
-static mrb_value
-get_gemcut_trial(mrb_state *mrb, void *opaque)
+static struct gemcut *
+get_gemcut(mrb_state *mrb)
 {
-  struct gemcut **gcutp = (struct gemcut **)opaque;
-  *gcutp = get_gemcut(mrb);
-  return mrb_nil_value();
+  struct gemcut *gcut;
+  get_gemcut_main(mrb, &gcut);
+  return gcut;
 }
 
 static struct gemcut *
@@ -127,7 +163,7 @@ get_gemcut_noraise(mrb_state *mrb)
 {
   struct gemcut *gcut;
   mrb_bool state;
-  mrb_protect_error(mrb, get_gemcut_trial, &gcut, &state);
+  mrb_protect_error(mrb, (mrb_value (*)(mrb_state *, void *))get_gemcut_main, &gcut, &state);
   if (state) {
     return NULL;
   } else {
@@ -135,89 +171,46 @@ get_gemcut_noraise(mrb_state *mrb)
   }
 }
 
-MRB_API void
-mruby_gemcut_clear(mrb_state *mrb)
+static mrb_noreturn void
+gemcut_sealed_error(mrb_state *mrb)
 {
-  struct gemcut *gcut = get_gemcut_noraise(mrb);
-  if (gcut == NULL || gcut->gems_committed) { return; }
-  memset(gcut->pickups, 0, sizeof(gcut->pickups));
+  mrb_raise(mrb, mrb->eException_class, "currently feature is sealed"); // SecurityError
 }
 
-static int
-gemcut_pickup_by_no(struct gemcut *gcut, int gi)
+static void
+gemcut_check_sealed(mrb_state *mrb)
 {
-  if (gcut->pickups[gi / MGEMS_UNIT_BITS] & (1 << gi % MGEMS_UNIT_BITS)) {
-    return 0;
+  if (get_gemcut(mrb)->status == gemcut_sealed) {
+    gemcut_sealed_error(mrb);
   }
-
-  const struct mgem_spec *mgem = &mgems_list[gi];
-
-  if (!mgem->available) { return 2; }
-
-  if (mgem->deps) {
-    /* deps を先に再帰的初期化する */
-    FOREACH_NLIST(const uint16_t, *d, mgem->numdeps, mgem->deps) {
-      int status = gemcut_pickup_by_no(gcut, *d);
-      if (status != 0) {
-        return status;
-      }
-    }
-  }
-
-  gcut->pickups[gi / MGEMS_UNIT_BITS] |= 1 << (gi % MGEMS_UNIT_BITS);
-
-  return 0;
 }
-
-static int
-gemcut_pickup(struct gemcut *gcut, const char name[])
-{
-  int gi = gemcut_lookup(gcut, name);
-  if (gi < 0) { return 1; }
-  return gemcut_pickup_by_no(gcut, gi);
-}
-
-int
-mruby_gemcut_pickup(mrb_state *mrb, const char name[])
-{
-  struct gemcut *gcut = get_gemcut_noraise(mrb);
-  if (gcut == NULL || gcut->gems_committed) { return 1; }
-  return gemcut_pickup(gcut, name);
-}
-
-int
-mruby_gemcut_imitate_to(mrb_state *dest, mrb_state *src)
-{
-  const struct gemcut *gsrc = get_gemcut_noraise(src);
-  struct gemcut *gdest = get_gemcut_noraise(dest);
-  if (gsrc == NULL || gdest == NULL || gdest->gems_committed) { return 1; }
-
-  for (int i = 0; i < MGEMS_BITMAP_UNITS; i++) {
-    gdest->pickups[i] |= gsrc->pickups[i];
-  }
-
-  return 0;
-}
-
-static int
-nopickups(struct gemcut *gcut)
-{
-  const bitmap_unit *p = gcut->pickups;
-
-  for (int i = MGEMS_BITMAP_UNITS; i > 0; i--, p++) {
-    if (*p != 0) {
-      return 0;
-    }
-  }
-
-  return 1;
-}
-
-static mrb_value gem_final_trial(mrb_state *, void *);
-static void finalization(mrb_state *);
 
 static mrb_value
-gem_final_trial(mrb_state *mrb, void *opaque)
+gemcut_imitate_to_main(mrb_state *dest, void *opaque)
+{
+  mrb_state *src = (mrb_state *)opaque;
+  const struct gemcut *gsrc = get_gemcut(src);
+  struct gemcut *gdest = get_gemcut(dest);
+  if (gdest->status != gemcut_normal) {
+    gemcut_sealed_error(dest);
+  }
+
+  for (int i = 0; i < MGEMS_POPULATION; i++) {
+    if (gemcut_loaded_p_by_id(gsrc, i) && !gemcut_loaded_p_by_id(gdest, i)) {
+      // TODO: mruby_gemcut_require() ではなくて直接 gemcut_require_by_id_main_top() を呼び出すようにする
+      mruby_gemcut_require(dest, mgems_list[i].name);
+    }
+  }
+
+  return mrb_nil_value();
+}
+
+DEFINE_PROTECTED_FUNCTION(
+    MRB_API mrb_value mruby_gemcut_imitate_to(mrb_state *mrb, mrb_state *src),
+    gemcut_imitate_to_main, src, RESULT_PASSTHROUGH, ret)
+
+static mrb_value
+gemcut_cleanup_main(mrb_state *mrb, void *opaque)
 {
   const struct mgem_spec *mgem = (const struct mgem_spec *)opaque;
   mgem->gem_final(mrb);
@@ -225,21 +218,16 @@ gem_final_trial(mrb_state *mrb, void *opaque)
 }
 
 static void
-finalization(mrb_state *mrb)
+gemcut_cleanup(mrb_state *mrb)
 {
   struct gemcut *gcut = get_gemcut_noraise(mrb);
   if (gcut == NULL) { return; }
 
-  bitmap_unit comts;
   const struct mgem_spec *mgem = mgems_list + MGEMS_POPULATION - 1;
   int ai = mrb_gc_arena_save(mrb);
-  for (int i = 0; i < MGEMS_POPULATION; i++, mgem--, comts >>= 1) {
-    if (i % MGEMS_UNIT_BITS == 0) {
-      comts = gcut->commits[i / MGEMS_UNIT_BITS];
-    }
-
-    if (comts & 1 && mgem->gem_final) {
-      mrb_protect_error(mrb, gem_final_trial, (void *)(uintptr_t)mgem, NULL);
+  for (int i = MGEMS_POPULATION - 1; i > 0; i--, mgem--) {
+    if (gemcut_loaded_p_by_id(gcut, i) && mgem->gem_final) {
+      mrb_protect_error(mrb, gemcut_cleanup_main, (void *)(uintptr_t)mgem, NULL);
       mrb_gc_arena_restore(mrb, ai);
     }
   }
@@ -316,429 +304,370 @@ gemcut_rollback_gc_arena(mrb_state *mrb)
 }
 
 static mrb_value
-gemcut_commit_trial(mrb_state *mrb, void *opaque)
+gemcut_load_error(mrb_state *mrb, const char *name)
 {
-  struct gemcut *gcut = (struct gemcut *)opaque;
-  int ai = mrb_gc_arena_save(mrb);
-  bitmap_unit picks;
-  const struct mgem_spec *mgem = mgems_list;
+  mrb_value mesg = mrb_format(mrb, "cannot load such file - %" AUX_PRIs, AUX_PRIs_MAKE(name));
+  mrb_value err = mrb_exc_new_str(mrb, mrb_exc_get(mrb, "LoadError"), mesg);
+  if (mrb->jmp) {
+    mrb_exc_raise(mrb, err);
+  }
+  return err;
+}
 
-  for (int i = 0; i < MGEMS_POPULATION; i++, mgem++, picks >>= 1) {
-    if (i % MGEMS_UNIT_BITS == 0) {
-      picks = gcut->pickups[i / MGEMS_UNIT_BITS];
-    }
+struct gemcut_require_by_id_main_top
+{
+  struct gemcut *gcut;
+  int id;
+};
 
-    if (picks & 1) {
-      int inv = MGEMS_POPULATION - i - 1;
-      gcut->commits[inv / MGEMS_UNIT_BITS] |= 1 << (inv % MGEMS_UNIT_BITS);
-      if (mgem->gem_init) {
-        AUX_GEM_INIT_ENTER() {
-          mgem->gem_init(mrb);
-          mrb_gc_arena_restore(mrb, ai);
-        } AUX_GEM_INIT_LEAVE();
+static void
+gemcut_require_by_id_main(mrb_state *mrb, struct gemcut *gcut, int id, int ai)
+{
+  const struct mgem_spec *spec = &mgems_list[id];
+
+  {
+    const uint16_t *deps = spec->deps;
+    for (int i = spec->numdeps; i > 0; i--, deps++) {
+      if (!gemcut_loaded_p_by_id(gcut, *deps)) {
+        gemcut_require_by_id_main(mrb, gcut, *deps, ai);
       }
     }
   }
 
-  return mrb_nil_value();
+  gemcut_set_loaded_by_id(gcut, id);
+  if (spec->gem_init) {
+    AUX_GEM_INIT_ENTER() {
+      spec->gem_init(mrb);
+      mrb_gc_arena_restore(mrb, ai);
+    } AUX_GEM_INIT_LEAVE();
+  }
 }
 
 static mrb_value
-gemcut_commit(mrb_state *mrb, void *unused)
+gemcut_require_by_id_main_top(mrb_state *mrb, void *opaque)
+{
+  struct gemcut_require_by_id_main_top *p = (struct gemcut_require_by_id_main_top *)opaque;
+  if (!p->gcut->set_atexit) {
+    mrb_state_atexit(mrb, gemcut_cleanup);
+    p->gcut->set_atexit = true;
+  }
+
+  gemcut_require_by_id_main(mrb, p->gcut, p->id, mrb_gc_arena_save(mrb));
+
+  return mrb_true_value();
+}
+
+static mrb_value
+gemcut_require_main(mrb_state *mrb, void *opaque)
 {
   struct gemcut *gcut = get_gemcut(mrb);
 
-  if (gcut->gems_committed) { mrb_raise(mrb, E_RUNTIME_ERROR, "gemcut is already committed"); }
-
-  gcut->gems_committed = 1;
-
-  if (nopickups(gcut)) {
-    return mrb_nil_value();
+  if (gcut->status) {
+    gemcut_sealed_error(mrb);
   }
 
-  mrb_state_atexit(mrb, finalization);
+  const char *name = (const char *)opaque;
+  int id = gemcut_lookup(name);
+  if (id < 0) {
+    return gemcut_load_error(mrb, name);
+  }
 
+  if (gemcut_loaded_p_by_id(gcut, id)) {
+    return mrb_false_value();
+  }
+
+  const struct mgem_spec *spec = &mgems_list[id];
+  if (!spec->available) {
+    return gemcut_load_error(mrb, spec->name);
+  }
+
+  struct gemcut_require_by_id_main_top args = { gcut, id };
   gemcut_snapshot_gc_arena(mrb);
   mrb_bool error;
-  mrb_value ret = mrb_protect_error(mrb, gemcut_commit_trial, gcut, &error);
+  mrb_value ret = mrb_protect_error(mrb, gemcut_require_by_id_main_top, &args, &error);
   gemcut_rollback_gc_arena(mrb);
-  if (error) {
+
+  if (error && mrb->jmp) {
     mrb_exc_raise(mrb, ret);
   }
-  return mrb_nil_value();
+
+  return ret;
 }
 
-struct RException *
-mruby_gemcut_commit(mrb_state *mrb)
+DEFINE_PROTECTED_FUNCTION(
+    MRB_API mrb_value mruby_gemcut_require(mrb_state *mrb, const char *name),
+    gemcut_require_main, (void *)(uintptr_t)name, RESULT_PASSTHROUGH, ret)
+
+static mrb_value
+gemcut_s_require(mrb_state *mrb, mrb_value mod)
 {
-  mrb_bool state;
-  mrb_value ret = mrb_protect_error(mrb, gemcut_commit, NULL, &state);
+  (void)mod;
 
-  if (state) {
-    if (mrb_exception_p(ret)) { return mrb_exc_ptr(ret); }
-  }
-
-  return NULL;
+  const char *name;
+  mrb_get_args(mrb, "z", &name);
+  return gemcut_require_main(mrb, (void *)(uintptr_t)name);
 }
 
 static mrb_value
-gemcut_available_list_trial(mrb_state *mrb, void *unused)
+gemcut_loaded_features_main(mrb_state *mrb, void *opaque)
 {
-  (void)get_gemcut(mrb);
-  mrb_value ary = mrb_ary_new_capa(mrb, MGEMS_POPULATION);
-  for (int i = 0; i < MGEMS_POPULATION; i++) {
-    mrb_ary_push(mrb, ary, mrb_str_new_static(mrb, mgems_list[i].name, strlen(mgems_list[i].name)));
-  }
-  return ary;
-}
+  (void)opaque;
 
-MRB_API mrb_value
-mruby_gemcut_available_list(mrb_state *mrb)
-{
-  mrb_bool state;
-  mrb_value ret = mrb_protect_error(mrb, gemcut_available_list_trial, NULL, &state);
-  if (state != 0 || !mrb_array_p(ret)) {
-    return mrb_nil_value();
-  } else {
-    return ret;
-  }
-}
-
-static mrb_value
-gemcut_committed_list_trial(mrb_state *mrb, void *unused)
-{
-  struct gemcut *g = get_gemcut(mrb);
-  if (g->gems_committed == 0) { mrb_raise(mrb, E_RUNTIME_ERROR, "gemcut is not yet committed"); }
+  struct gemcut *gcut = get_gemcut(mrb);
   mrb_value ary = mrb_ary_new(mrb);
   for (int i = 0; i < MGEMS_POPULATION; i++) {
-    if ((g->commits[i / MGEMS_UNIT_BITS] >> (i % MGEMS_UNIT_BITS)) & 1) {
-      const struct mgem_spec *e = &mgems_list[MGEMS_POPULATION - i - 1];
-      mrb_ary_push(mrb, ary, mrb_str_new_static(mrb, e->name, strlen(e->name)));
+    if (gemcut_loaded_p_by_id(gcut, i)) {
+      mrb_ary_push(mrb, ary, mrb_str_new_static(mrb, mgems_list[i].name, strlen(mgems_list[i].name)));
     }
   }
   return ary;
 }
 
-MRB_API mrb_value
-mruby_gemcut_committed_list(mrb_state *mrb)
+DEFINE_PROTECTED_FUNCTION(
+    MRB_API mrb_value mruby_gemcut_loaded_features(mrb_state *mrb),
+    gemcut_loaded_features_main, NULL, RESULT_PASSTHROUGH, mrb_nil_value())
+
+static mrb_value
+gemcut_s_loaded_features(mrb_state *mrb, mrb_value mod)
 {
-  mrb_bool state;
-  mrb_value ret = mrb_protect_error(mrb, gemcut_committed_list_trial, NULL, &state);
-  if (state != 0 || !mrb_array_p(ret)) {
-    return mrb_nil_value();
-  } else {
-    return ret;
-  }
+  (void)mod;
+
+  gemcut_check_sealed(mrb);
+  return gemcut_loaded_features_main(mrb, NULL);
 }
 
 static mrb_value
-gemcut_available_size_trial(mrb_state *mrb, void *unused)
+gemcut_loaded_count_main(mrb_state *mrb, void *opaque)
+{
+  struct gemcut *gcut = get_gemcut(mrb);
+  int count = 0;
+  for (int i = 0; i < MGEMS_BITMAP_UNITS; i++) {
+    count += popcount32(gcut->loaded[i]);
+  }
+
+  if (opaque) {
+    *(int *)opaque = count;
+  }
+
+  return mrb_fixnum_value(count);
+}
+
+DEFINE_PROTECTED_FUNCTION(
+    MRB_API int mruby_gemcut_loaded_count(mrb_state *mrb),
+    gemcut_loaded_count_main, NULL, mrb_fixnum, -1)
+
+static mrb_value
+gemcut_s_loaded_feature_count(mrb_state *mrb, mrb_value mod)
+{
+  (void)mod;
+
+  gemcut_check_sealed(mrb);
+  return gemcut_loaded_count_main(mrb, NULL);
+}
+
+static mrb_value
+gemcut_loaded_feature_p_main(mrb_state *mrb, void *opaque)
+{
+  struct gemcut *gcut = get_gemcut(mrb);
+  int id = gemcut_lookup((const char *)opaque);
+  return mrb_bool_value(gemcut_loaded_p_by_id(gcut, id));
+}
+
+DEFINE_PROTECTED_FUNCTION(
+    MRB_API mrb_bool mruby_gemcut_loaded_p(mrb_state *mrb, const char *name),
+    gemcut_loaded_count_main, (void *)(uintptr_t)name, mrb_bool, FALSE)
+
+static mrb_value
+gemcut_s_loaded_feature_p(mrb_state *mrb, mrb_value mod)
+{
+  (void)mod;
+
+  const char *name;
+  mrb_get_args(mrb, "z", &name);
+  gemcut_check_sealed(mrb);
+  return gemcut_loaded_feature_p_main(mrb, (void *)(uintptr_t)name);
+}
+
+static mrb_value
+gemcut_loadable_features_main(mrb_state *mrb, void *opaque)
+{
+  (void)opaque;
+  (void)get_gemcut(mrb);
+
+  mrb_value ary = mrb_ary_new(mrb);
+  FOREACH_ALIST(const struct mgem_spec, *mgem, mgems_list) {
+    if (mgem->available) {
+      mrb_ary_push(mrb, ary, mrb_str_new_static(mrb, mgem->name, strlen(mgem->name)));
+    }
+  }
+
+  return ary;
+}
+
+DEFINE_PROTECTED_FUNCTION(
+    MRB_API mrb_value mruby_gemcut_loadable_features(mrb_state *mrb),
+    gemcut_loadable_features_main, NULL, RESULT_PASSTHROUGH, mrb_nil_value())
+
+static mrb_value
+gemcut_s_loadable_features(mrb_state *mrb, mrb_value mod)
+{
+  (void)mod;
+
+  gemcut_check_sealed(mrb);
+  return gemcut_loadable_features_main(mrb, NULL);
+}
+
+static mrb_value
+gemcut_loadable_feature_count_main(mrb_state *mrb, void *opaque)
+{
+  (void)opaque;
+  (void)get_gemcut(mrb);
+
+  int count = 0;
+  FOREACH_ALIST(const struct mgem_spec, *mgem, mgems_list) {
+    count += mgem->available;
+  }
+  return mrb_fixnum_value(count);
+}
+
+DEFINE_PROTECTED_FUNCTION(
+    MRB_API int mruby_gemcut_loadable_count(mrb_state *mrb),
+    gemcut_loadable_feature_count_main, NULL, mrb_fixnum, -1)
+
+static mrb_value
+gemcut_s_loadable_feature_count(mrb_state *mrb, mrb_value mod)
+{
+  (void)mod;
+
+  gemcut_check_sealed(mrb);
+  return gemcut_loadable_feature_count_main(mrb, NULL);
+}
+
+static mrb_value
+gemcut_loadable_feature_p_main(mrb_state *mrb, void *opaque)
 {
   (void)get_gemcut(mrb);
-  return mrb_fixnum_value(MGEMS_POPULATION);
-}
 
-MRB_API int
-mruby_gemcut_available_size(mrb_state *mrb)
-{
-  mrb_bool state;
-  mrb_value ret = mrb_protect_error(mrb, gemcut_available_size_trial, NULL, &state);
-  if (state != 0 && !mrb_fixnum_p(ret)) {
-    return -1;
-  } else {
-    return mrb_fixnum(ret);
-  }
-}
-
-static mrb_value
-gemcut_commit_size_trial(mrb_state *mrb, void *unused)
-{
-  struct gemcut *g = get_gemcut(mrb);
-  if (g->gems_committed == 0) { mrb_raise(mrb, E_RUNTIME_ERROR, "gemcut is not yet committed"); }
-  int bits = 0;
-  for (int i = 0; i < MGEMS_BITMAP_UNITS; i++) {
-    bits += popcount32(g->commits[i]);
-  }
-  return mrb_fixnum_value(bits);
-}
-
-MRB_API int
-mruby_gemcut_commit_size(mrb_state *mrb)
-{
-  mrb_bool state;
-  mrb_value ret = mrb_protect_error(mrb, gemcut_commit_size_trial, NULL, &state);
-  if (state != 0 && !mrb_fixnum_p(ret)) {
-    return -1;
-  } else {
-    return mrb_fixnum(ret);
-  }
-}
-
-static mrb_value
-gemcut_available_p_trial(mrb_state *mrb, void *opaque)
-{
   const char *name = (const char *)opaque;
-  struct gemcut *g = get_gemcut(mrb);
-  int index = gemcut_lookup(g, name);
-  if (index < 0) {
-    return mrb_false_value();
-  } else {
-    return mrb_true_value();
-  }
-}
-
-MRB_API mrb_bool
-mruby_gemcut_available_p(mrb_state *mrb, const char name[])
-{
-  mrb_bool state;
-  mrb_value ret = mrb_protect_error(mrb, gemcut_available_p_trial, (void *)(uintptr_t)name, &state);
-  if (state == 0 && !mrb_nil_p(ret)) {
-    switch (mrb_type(ret)) {
-    case MRB_TT_TRUE:
-      return TRUE;
-    case MRB_TT_FALSE:
-      return FALSE;
-    default:
-      break;
-    }
-  }
-
-  return FALSE;
-}
-
-static mrb_value
-gemcut_committed_p_trial(mrb_state *mrb, void *opaque)
-{
-  const char *name = (const char *)opaque;
-  struct gemcut *g = get_gemcut(mrb);
-  if (name == NULL) {
-    return mrb_bool_value(g->gems_committed != 0);
-  }
-  if (g->gems_committed == 0) { return mrb_nil_value(); } /* XXX: 例外の方が嬉しいかな？ */
-  int index = gemcut_lookup(g, name);
-  if (index < 0) { return mrb_nil_value(); }
-  index = MGEMS_POPULATION - index - 1;
-  if ((g->commits[index / MGEMS_UNIT_BITS] >> (index % MGEMS_UNIT_BITS)) & 1) {
+  int id = gemcut_lookup(name);
+  if (id >= 0 && mgems_list[id].available) {
     return mrb_true_value();
   } else {
     return mrb_false_value();
   }
 }
 
-MRB_API mrb_bool
-mruby_gemcut_committed_p(mrb_state *mrb, const char name[])
-{
-  mrb_bool state;
-  mrb_value ret = mrb_protect_error(mrb, gemcut_committed_p_trial, (void *)(uintptr_t)name, &state);
-  if (state == 0 && !mrb_nil_p(ret)) {
-    switch (mrb_type(ret)) {
-    case MRB_TT_TRUE:
-      return TRUE;
-    case MRB_TT_FALSE:
-      return FALSE;
-    default:
-      break;
-    }
-  }
-
-  return FALSE;
-}
+DEFINE_PROTECTED_FUNCTION(
+    MRB_API mrb_bool mruby_gemcut_loadable_p(mrb_state *mrb, const char *name),
+    gemcut_loadable_feature_p_main, (void *)(uintptr_t)name, mrb_bool, FALSE)
 
 static mrb_value
-gemcut_s_pickup(mrb_state *mrb, mrb_value self)
+gemcut_s_loadable_feature_p(mrb_state *mrb, mrb_value mod)
 {
+  (void)mod;
+
   const char *name;
   mrb_get_args(mrb, "z", &name);
-  int ret = mruby_gemcut_pickup(mrb, name);
-  switch (ret) {
-  case 2:
-    mrb_raisef(mrb, E_RUNTIME_ERROR, "'%S' is not available (because it is included in the blacklist of mruby-gemcut)", mrb_str_new_cstr(mrb, name));
-    /* fall through (suppress the compiler warnings) */
-  default:
-    return mrb_bool_value(!ret);
-  }
+  gemcut_check_sealed(mrb);
+  return gemcut_loadable_feature_p_main(mrb, (void *)(uintptr_t)name);
 }
 
 static mrb_value
-gemcut_s_commit(mrb_state *mrb, mrb_value self)
+gemcut_lock_main(mrb_state *mrb, void *opaque)
 {
-  mrb_get_args(mrb, "");
-  gemcut_commit(mrb, NULL);
+  (void)opaque;
+
+  struct gemcut *g;
+  get_gemcut_main(mrb, &g);
+  if (!g->status) {
+    g->status = gemcut_locked;
+  }
+
   return mrb_nil_value();
 }
 
+DEFINE_PROTECTED_FUNCTION(
+    MRB_API void mruby_gemcut_lock(mrb_state *mrb),
+    gemcut_lock_main, NULL, RESULT_VOID, RESULT_VOID_ERROR)
+
 static mrb_value
-gemcut_s_available_list(mrb_state *mrb, mrb_value self)
+gemcut_s_lock(mrb_state *mrb, mrb_value mod)
 {
-  return gemcut_available_list_trial(mrb, NULL);
+  (void)mod;
+
+  return gemcut_lock_main(mrb, NULL);
 }
 
 static mrb_value
-gemcut_s_committed_list(mrb_state *mrb, mrb_value self)
+gemcut_seal_main(mrb_state *mrb, void *opaque)
 {
-  return gemcut_committed_list_trial(mrb, NULL);
+  (void)opaque;
+
+  struct gemcut *g;
+  get_gemcut_main(mrb, &g);
+  g->status = gemcut_sealed;
+  mrb_const_remove(mrb, mrb_obj_value(mrb->object_class), mrb_intern_lit(mrb, "Gemcut"));
+
+  return mrb_nil_value();
+}
+
+DEFINE_PROTECTED_FUNCTION(
+    MRB_API void mruby_gemcut_seal(mrb_state *mrb),
+    gemcut_seal_main, NULL, RESULT_VOID, RESULT_VOID_ERROR)
+
+static mrb_value
+gemcut_s_seal(mrb_state *mrb, mrb_value mod)
+{
+  (void)mod;
+
+  return gemcut_seal_main(mrb, NULL);
 }
 
 static mrb_value
-gemcut_s_available_size(mrb_state *mrb, mrb_value self)
+gemcut_define_module(mrb_state *mrb, void *unused)
 {
-  return gemcut_available_size_trial(mrb, NULL);
-}
+  (void)unused;
 
-static mrb_value
-gemcut_s_commit_size(mrb_state *mrb, mrb_value self)
-{
-  return gemcut_commit_size_trial(mrb, NULL);
-}
-
-static mrb_value
-gemcut_available_p(mrb_state *mrb, mrb_value self)
-{
-  const char *name;
-  mrb_get_args(mrb, "z", &name);
-  return gemcut_available_p_trial(mrb, (void *)(uintptr_t)name);
-}
-
-static mrb_value
-gemcut_committed_p(mrb_state *mrb, mrb_value self)
-{
-  const char *name;
-  mrb_get_args(mrb, "z", &name);
-  return gemcut_committed_p_trial(mrb,  (void *)(uintptr_t)name);
-}
-
-static mrb_value
-gemcut_define_module_trial(mrb_state *mrb, void *unused)
-{
   struct gemcut *g = get_gemcut(mrb);
-  if (g->module_defined) {
-    mrb_raise(mrb, E_RUNTIME_ERROR, "Gemcut module is already defined");
-  }
-  g->module_defined = 1;
+  if (!g->defined_module && g->status < gemcut_sealed) {
+    g->defined_module = true;
 
-  struct RClass *gemcut_mod = mrb_define_module(mrb, "Gemcut");
-  mrb_define_class_method(mrb, gemcut_mod, "pickup", gemcut_s_pickup, MRB_ARGS_REQ(1));
-  mrb_define_class_method(mrb, gemcut_mod, "commit", gemcut_s_commit, MRB_ARGS_NONE());
-  mrb_define_class_method(mrb, gemcut_mod, "available_list", gemcut_s_available_list, MRB_ARGS_NONE());
-  mrb_define_class_method(mrb, gemcut_mod, "committed_list", gemcut_s_committed_list, MRB_ARGS_NONE());
-  mrb_define_class_method(mrb, gemcut_mod, "available_size", gemcut_s_available_size, MRB_ARGS_NONE());
-  mrb_define_class_method(mrb, gemcut_mod, "commit_size", gemcut_s_commit_size, MRB_ARGS_NONE());
-  mrb_define_class_method(mrb, gemcut_mod, "available?", gemcut_available_p, MRB_ARGS_REQ(1));
-  mrb_define_class_method(mrb, gemcut_mod, "committed?", gemcut_committed_p, MRB_ARGS_REQ(1));
+    NO_PRESYM(mrb_intern_lit(mrb, "Gemcut"));
+    struct RClass *gemcut_mod = mrb_define_module(mrb, "Gemcut");
+
+    mrb_define_class_method(mrb, gemcut_mod, "require", gemcut_s_require, MRB_ARGS_REQ(1));
+
+    mrb_define_class_method(mrb, gemcut_mod, "loaded_features", gemcut_s_loaded_features, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, gemcut_mod, "loaded_feature_count", gemcut_s_loaded_feature_count, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, gemcut_mod, "loaded_feature?", gemcut_s_loaded_feature_p, MRB_ARGS_REQ(1));
+
+    mrb_define_class_method(mrb, gemcut_mod, "loadable_features", gemcut_s_loadable_features, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, gemcut_mod, "loadable_feature_count", gemcut_s_loadable_feature_count, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, gemcut_mod, "loadable_feature?", gemcut_s_loadable_feature_p, MRB_ARGS_REQ(1));
+
+    mrb_define_class_method(mrb, gemcut_mod, "lock", gemcut_s_lock, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, gemcut_mod, "lock!", gemcut_s_lock, MRB_ARGS_NONE());
+
+    mrb_define_class_method(mrb, gemcut_mod, "seal", gemcut_s_seal, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, gemcut_mod, "seal!", gemcut_s_seal, MRB_ARGS_NONE());
+  }
 
   return mrb_nil_value();
 }
 
-MRB_API int
-mruby_gemcut_define_module(mrb_state *mrb)
-{
-  mrb_bool state;
-  mrb_value ret = mrb_protect_error(mrb, gemcut_define_module_trial, NULL, &state);
-  if (state != 0 || !mrb_nil_p(ret)) {
-    return 1;
-  } else {
-    return 0;
-  }
-}
-
-MRB_API int
-mruby_gemcut_pickup_multi(mrb_state *mrb, int num_names, const char *name_table[])
-{
-  int err = 0;
-
-  if (num_names > 0) {
-    if (name_table == NULL) { return 1; }
-    const char **namep = name_table;
-    for (; num_names > 0; num_names--, namep++) {
-      if (mruby_gemcut_pickup(mrb, *namep) != 0) { err = 1; }
-    }
-  }
-
-  return err;
-}
-
-MRB_API mrb_state *
-mruby_gemcut_open(mrb_state *imitate_src, int num_names, const char *name_table[], mrb_allocf allocator, void *alloc_udata)
-{
-  if (allocator == NULL) {
-    allocator = mrb_default_allocf;
-    alloc_udata = NULL;
-  }
-
-  mrb_state *mrb = mrb_open_core(allocator, alloc_udata);
-  if (mrb == NULL) { goto failed; }
-
-  if (imitate_src) {
-    if (mruby_gemcut_imitate_to(mrb, imitate_src) != 0) { goto failed; }
-  }
-
-  if (mruby_gemcut_define_module(mrb) != 0) { goto failed; }
-  if (mruby_gemcut_pickup_multi(mrb, num_names, name_table) != 0) { goto failed; }
-  if (mruby_gemcut_commit(mrb) != 0) { goto failed; }
-
-  return mrb;
-
-failed:
-  if (mrb) { mrb_close(mrb); }
-  return NULL;
-}
-
-MRB_API mrb_state *
-mruby_gemcut_open_mrb(mrb_state *imitate_src, const void *bin, size_t binsize, mrb_allocf allocator, void *alloc_udata)
-{
-  if (allocator == NULL) {
-    allocator = mrb_default_allocf;
-    alloc_udata = NULL;
-  }
-
-  mrb_state *mrb = mrb_open_core(allocator, alloc_udata);
-  if (mrb == NULL) { goto failed; }
-
-  if (imitate_src) {
-    if (mruby_gemcut_imitate_to(mrb, imitate_src) != 0) { goto failed; }
-  }
-
-  if (mruby_gemcut_define_module(mrb) != 0) { goto failed; }
-  if (aux_load_irep_buf(mrb, bin, binsize) != 0) { goto failed; }
-
-  if (!mruby_gemcut_committed_p(mrb, NULL)) {
-    if (mruby_gemcut_commit(mrb) != NULL) { goto failed; }
-  }
-
-  return mrb;
-
-failed:
-  if (mrb) { mrb_close(mrb); }
-  return NULL;
-}
+DEFINE_PROTECTED_FUNCTION(
+    MRB_API void mruby_gemcut_define_module(mrb_state *mrb),
+    gemcut_define_module, NULL, RESULT_VOID, RESULT_VOID_ERROR)
 
 void
 mrb_mruby_gemcut_gem_init(mrb_state *mrb)
 {
-  /*
-   * この関数が呼ばれるのは `mrb_open()` / `mrb_open_alloc()` か
-   * `mruby-gemcut`、あるいは似たような mruby-gems からだと思われるため、
-   * 二重初期化を避ける意味でこれ以降の `mruby_gemcut_commit()` を禁止する。
-   */
-
-  struct gemcut *g = get_gemcut(mrb);
-
-  if (g->module_defined == 0) {
-    gemcut_define_module_trial(mrb, NULL);
-  }
-  if (g->gems_committed == 0) {
-    bitmap_unit lastmask = ~((bitmap_unit)-1 << (MGEMS_POPULATION & (sizeof(bitmap_unit) * CHAR_BIT - 1)));
-    g->gems_committed = 1;
-    memset(g->pickups, -1, sizeof(g->pickups));
-    memset(g->commits, -1, sizeof(g->commits));
-    if (lastmask != 0) {
-      g->pickups[MGEMS_POPULATION / MGEMS_UNIT_BITS] &= lastmask;
-      g->commits[MGEMS_POPULATION / MGEMS_UNIT_BITS] &= lastmask;
-    }
-  }
+  gemcut_define_module(mrb, NULL);
+  gemcut_set_loaded_by_id(get_gemcut(mrb), MRUBY_GEMCUT_ID);
 }
 
 void
 mrb_mruby_gemcut_gem_final(mrb_state *mrb)
 {
+  (void)mrb;
 }

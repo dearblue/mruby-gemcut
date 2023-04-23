@@ -26,6 +26,14 @@ mrb_obj_freeze(mrb_state *mrb, mrb_value obj)
 }
 #endif
 
+#if AUX_MRUBY_RELEASE_NO >= 20100
+# define AUX_PRIs "s"
+# define AUX_PRIs_MAKE(STR) (STR)
+#else
+# define AUX_PRIs "S"
+# define AUX_PRIs_MAKE(STR) mrb_str_new_cstr(mrb, (STR))
+#endif
+
 #if AUX_MRUBY_RELEASE_NO <= 30000
 # if defined(MRB_NAN_BOXING) || defined(MRB_WORD_BOXING)
 union gemcut_cptr_wrapper

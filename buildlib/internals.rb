@@ -49,6 +49,7 @@ module Gemcut
 
             /* NOTE: `struct mgem_spec` is defined in `mruby-gemcut/src/mruby-gemcut.c` */
 
+            #define MRUBY_GEMCUT_ID #{gems.index { |name, *| name == "mruby-gemcut" }}
             #define MGEMS_POPULATION #{gems.size}
             #define MGEMS_BITMAP_UNITS #{gems.empty? ? 1 : (gems.size + (unit_bits - 1)) / unit_bits}
             #define MGEMS_UNIT_BITS #{unit_bits}
