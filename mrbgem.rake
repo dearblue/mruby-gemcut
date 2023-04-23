@@ -30,4 +30,5 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
   end
 
   make_depsfile_task
+  make_geminit_task
 end
