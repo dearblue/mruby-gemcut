@@ -1,12 +1,12 @@
 freebsd_instance:
-  image: freebsd-13-0-release-amd64
+  image: freebsd-13-2-release-amd64
 
 task:
   env:
     matrix:
       MRUBY_VERSION: master
 
-  install_script: pkg install -y ruby rubygem-rake bison git
+  install_script: pkg install -y ruby rubygem-rake git
   script:
   - MRUBY_DIR=mruby-${MRUBY_VERSION}
   - fetch -o- https://github.com/mruby/mruby/archive/${MRUBY_VERSION}.zip | tar xf -
