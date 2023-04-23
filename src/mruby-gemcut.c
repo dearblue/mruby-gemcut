@@ -112,11 +112,24 @@ gemcut_set_loaded_by_id(struct gemcut *g, int id)
 }
 
 static int
-gemcut_lookup(const char name[])
+gemcut_lookup(mrb_state *mrb, const char name[], mrb_bool autoprefix)
 {
-  FOREACH_ALIST(const struct mgem_spec, *mgem, mgems_list) {
-    if (strcmp(name, mgem->name) == 0) {
-      return mgem - mgems_list;
+  for (;;) {
+    FOREACH_ALIST(const struct mgem_spec, *mgem, mgems_list) {
+      if (strcmp(name, mgem->name) == 0) {
+        return mgem - mgems_list;
+      }
+    }
+
+    if (!autoprefix) {
+      break;
+    } else {
+      autoprefix = FALSE;
+      int ai = mrb_gc_arena_save(mrb);
+      mrb_value str = mrb_str_new_cstr(mrb, "mruby-");
+      mrb_str_cat_cstr(mrb, str, name);
+      name = mrb_str_to_cstr(mrb, str);
+      mrb_gc_arena_restore(mrb, ai);
     }
   }
 
@@ -367,7 +380,7 @@ gemcut_require_main(mrb_state *mrb, void *opaque)
   }
 
   const char *name = (const char *)opaque;
-  int id = gemcut_lookup(name);
+  int id = gemcut_lookup(mrb, name, TRUE);
   if (id < 0) {
     return gemcut_load_error(mrb, name);
   }
@@ -469,7 +482,7 @@ static mrb_value
 gemcut_loaded_feature_p_main(mrb_state *mrb, void *opaque)
 {
   struct gemcut *gcut = get_gemcut(mrb);
-  int id = gemcut_lookup((const char *)opaque);
+  int id = gemcut_lookup(mrb, (const char *)opaque, TRUE);
   return mrb_bool_value(gemcut_loaded_p_by_id(gcut, id));
 }
 
@@ -549,7 +562,7 @@ gemcut_loadable_feature_p_main(mrb_state *mrb, void *opaque)
   (void)get_gemcut(mrb);
 
   const char *name = (const char *)opaque;
-  int id = gemcut_lookup(name);
+  int id = gemcut_lookup(mrb, name, TRUE);
   if (id >= 0 && mgems_list[id].available) {
     return mrb_true_value();
   } else {
