@@ -23,7 +23,7 @@ buildbase = "build/gemcut-test"
 
 MRuby::Build.new do
   toolchain :clang
-  self.build_dir = "#{buildbase}/#{self.name}"
+  self.build_dir = File.expand_path("#{buildbase}/#{self.name}")
   enable_debug
 
   gembox "default"
