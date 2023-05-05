@@ -112,7 +112,7 @@ module Gemcut
       end
 
       def make_geminit_task
-        file "#{build.build_dir}/mrbgems/gem_init.c" do |t|
+        file "#{build.build_dir}/mrbgems/gem_init.c" => [__FILE__] do |t|
           t.actions[1..-1] = []
           File.binwrite t.name, <<~CODE
             /*
