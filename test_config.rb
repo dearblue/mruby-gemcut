@@ -26,8 +26,6 @@ MRuby::Build.new do
   self.build_dir = File.expand_path("#{buildbase}/#{self.name}")
   enable_debug
 
-  gembox "default"
-
   gem __dir__ do |g|
     if g.cc.command =~ /\b(?:g?cc|clang)\d*\b/
       g.cc.flags << "-std=c11"
@@ -36,6 +34,8 @@ MRuby::Build.new do
       g.cxx.flags << %w(-Wpedantic -Wall -Wextra)
     end
   end
+
+  gembox "default"
 
   gem File.join(__dir__, "testgem")
 end
