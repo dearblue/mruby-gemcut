@@ -238,7 +238,7 @@ gemcut_cleanup(mrb_state *mrb)
 
   const struct mgem_spec *mgem = mgems_list + MGEMS_POPULATION - 1;
   int ai = mrb_gc_arena_save(mrb);
-  for (int i = MGEMS_POPULATION - 1; i > 0; i--, mgem--) {
+  for (int i = MGEMS_POPULATION - 1; i >= 0; i--, mgem--) {
     if (gemcut_loaded_p_by_id(gcut, i) && mgem->gem_final) {
       mrb_protect_error(mrb, gemcut_cleanup_main, (void *)(uintptr_t)mgem, NULL);
       mrb_gc_arena_restore(mrb, ai);
