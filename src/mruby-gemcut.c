@@ -349,10 +349,8 @@ gemcut_require_by_id_main(mrb_state *mrb, struct gemcut *gcut, int id, int ai)
 
   gemcut_set_loaded_by_id(gcut, id);
   if (spec->gem_init) {
-    AUX_GEM_INIT_ENTER() {
-      spec->gem_init(mrb);
-      mrb_gc_arena_restore(mrb, ai);
-    } AUX_GEM_INIT_LEAVE();
+    aux_ignite_gem_init(mrb, spec->gem_init);
+    mrb_gc_arena_restore(mrb, ai);
   }
 }
 

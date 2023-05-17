@@ -3,6 +3,7 @@
 
 #include <mruby.h>
 #include <mruby/error.h> /* for mrb_protect_error() */
+#include <mruby/proc.h>
 #include <mruby/version.h>
 
 #if MRUBY_RELEASE_NO == 30000 && defined(mrb_as_int)
@@ -99,61 +100,35 @@ mrb_protect_error(mrb_state *mrb, mrb_protect_error_f *body, void *opaque, mrb_b
 }
 #endif // AUX_MRUBY_RELEASE_NO
 
-#if AUX_MRUBY_RELEASE_NO >= 30001
-# define AUX_GEM_INIT_ENTER() do
-# define AUX_GEM_INIT_LEAVE() while (0)
+#if AUX_MRUBY_RELEASE_NO >= 30100
+static void
+aux_ignite_gem_init(mrb_state *mrb, void (*geminit)(mrb_state *mrb))
+{
+  geminit(mrb);
+}
 #else
+struct aux_ignite_gem_init_body
+{
+  void (*geminit)(mrb_state *);
+};
 
-# if AUX_MRUBY_RELEASE_NO < 30000
-#  define AUX_GEM_INIT_ENTER_SUB1()                                     \
-  do {                                                                  \
-    ci->stackent = cx->stack;                                           \
-    ci->target_class = mrb->object_class;                               \
-  } while (0)                                                           \
+static mrb_value
+aux_ignite_gem_init_body(mrb_state *mrb, mrb_value func)
+{
+  struct aux_ignite_gem_init_body *p = (struct aux_ignite_gem_init_body *)mrb_cptr(func);
+  p->geminit(mrb);
+  return mrb_nil_value();
+}
 
-# else
-#  define AUX_GEM_INIT_ENTER_SUB1()                                     \
-  do {                                                                  \
-    ci->stack = ci[-1].stack;                                           \
-    ci->u.target_class = mrb->object_class;                             \
-  } while (0)                                                           \
-
-# endif
-
-# if AUX_MRUBY_RELEASE_NO < 30000
-#  define AUX_GEM_INIT_LEAVE_SUB1()                                     \
-  do {                                                                  \
-    cx->stack = cx->ci->stackent;                                       \
-  } while (0)                                                           \
-
-# else
-#  define AUX_GEM_INIT_LEAVE_SUB1() do { } while (0)
-# endif
-
-# define AUX_GEM_INIT_ENTER()                                           \
-  do {                                                                  \
-    struct mrb_context *cx = mrb->c;                                    \
-    if (cx->ciend - cx->ci < 3) {                                       \
-      mrb_raise(mrb, E_RUNTIME_ERROR,                                   \
-                "the call stack will not be expanded (limitation by mruby-gemcut)"); \
-    }                                                                   \
-    int ciidx = cx->ci - cx->cibase;                                    \
-    mrb_callinfo *ci = ++cx->ci;                                        \
-    memset(ci, 0, sizeof(*ci));                                         \
-    ci->acc = -1; /* CI_ACC_SKIP */                                     \
-    AUX_GEM_INIT_ENTER_SUB1();                                          \
-    do                                                                  \
-
-# define AUX_GEM_INIT_LEAVE()                                           \
-    while (0);                                                          \
-    if (mrb->c != cx) {                                                 \
-      mrb_raise(mrb, E_RUNTIME_ERROR,                                   \
-                "fiber switching is not supported in mruby-" MRUBY_VERSION " (limitation by mruby-gemcut)"); \
-    }                                                                   \
-    cx->ci = cx->cibase + ciidx;                                        \
-    AUX_GEM_INIT_LEAVE_SUB1();                                          \
-  } while (0)                                                           \
-
+static void
+aux_ignite_gem_init(mrb_state *mrb, void (*geminit)(mrb_state *mrb))
+{
+  struct aux_ignite_gem_init_body args = { geminit };
+  struct RProc *proc = mrb_proc_new_cfunc(mrb, aux_ignite_gem_init_body);
+  int cioff = mrb->c->ci - mrb->c->cibase;
+  mrb_yield_with_class(mrb, mrb_obj_value(proc), 0, NULL, mrb_cptr_value(mrb, &args), mrb->object_class);
+  mrb->c->ci = mrb->c->cibase + cioff;
+}
 #endif
 
 #endif // MRUBY_GEMCUT_COMPAT_H
