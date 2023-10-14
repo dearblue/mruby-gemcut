@@ -1,10 +1,12 @@
 # mruby-gemcut
 
+***NOTE***:
+This file was converted from Japanese by [Google Translate](https://translate.google.co.jp/).
+[See the Japanese README for accurate and more detailed information / 日本語 README](README.ja.md).
+
 `mruby-gemcut` provide a mechanism to selectively incorporate mruby-gems pre-installed in `build_config.rb` after `mrb_open_core()`.
 
 It is possible to configure individual mruby vm which omits / restricts functions in one executable file and the same process space as necessary.
-
-([原文である日本語 README / Original Japanese version README](README.ja.md))
 
 
 ## THE GREATEST PLEASURES!

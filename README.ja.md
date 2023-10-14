@@ -14,7 +14,7 @@
 
 ## できること
 
-### gemcut C API
+### Gemcut C API
 
 利用するためには `#include <mruby-gemcut.h>` を記述して下さい。
 
@@ -35,12 +35,12 @@
       - `MRB_API int mruby_gemcut_loadable_feature_count(mrb_state *mrb)`
       - `MRB_API mrb_bool mruby_gemcut_loadable_feature_p(mrb_state *mrb, const char *name)`
 
-  - mruby モジュール API
+  - モジュール API
 
       - `MRB_API void mruby_gemcut_lock(mrb_state *mrb)` - `mruby_gemcut_require()` 及び `Gemcut.require` を封印します。
-      - `MRB_API void mruby_gemcut_seal(mrb_state *mrb)` - あらゆる gemcut mruby API の操作を封印します。
+      - `MRB_API void mruby_gemcut_seal(mrb_state *mrb)` - あらゆる Gemcut Ruby API の操作を封印します。
 
-### gemcut mruby API
+### Gemcut Ruby API
 
 これらは `mrb_open()` や `mrb_open_alloc()` した場合に最初から利用できます。
 `mrb_open_core()` で利用するためには、あらかじめ C 空間で `mruby_gemcut_require(mrb, "mruby-gemcut")` を呼び出しておく必要があります。
@@ -134,7 +134,7 @@ MRuby::Gem::Specification.new("YOUR-BIN-TOOL") do |spec|
 end
 ```
 
-それからあなたの実行コードに `mrb_open()` と mruby gemcut API を記述します。
+それからあなたの実行コードに `mrb_open_core()` と Gemcut API を記述します。
 
 ```c
 /* YOUR-BIN-TOOL/tools/YOUR-BIN/tool.c */
@@ -148,13 +148,13 @@ main(int argc, char *argv[])
   mrb_state *mrb1 = mrb_open();
   mruby_gemcut_require(mrb1, "mruby-sprintf");
   mruby_gemcut_require(mrb1, "mruby-print");
-  mruby_gemcut_lock(mrb1); /* これ以降は mrb1 に対して mruby_gemcut_require() を受け付けない */
+  mruby_gemcut_lock(mrb1);                      /* これ以降は mrb1 に対して mruby_gemcut_require() を受け付けない */
 
   mrb_state *mrb2 = mrb_open();
-  mruby_gemcut_imitate_to(mrb2, mrb1);  /* mrb1 と同じ mruby gems の構成にする */
+  mruby_gemcut_imitate_to(mrb2, mrb1);          /* mrb1 と同じ mruby gems の構成にする */
   mruby_gemcut_require(mrb2, "mruby-math");
-  mruby_gemcut_require(mrb2, "mruby-gemcut"); /* Ruby 空間で gemcut mruby API を使う場合に指定する */
-  //mruby_gemcut_lock(mrb2); /* これ以降の mrb2 に対して mruby_gemcut_require() を封印したい場合に指定する */
+  mruby_gemcut_require(mrb2, "mruby-gemcut");   /* Gemcut Ruby API を使う場合に指定する */
+  //mruby_gemcut_lock(mrb2);                    /* これ以降の mrb2 に対して mruby_gemcut_require() を封印したい場合に指定する */
 
   /*
    * mrb1 と mrb2 を面白可笑しく処理する
