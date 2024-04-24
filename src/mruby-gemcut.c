@@ -334,7 +334,7 @@ struct gemcut_require_by_id_main_top
 };
 
 static void
-gemcut_require_by_id_main(mrb_state *mrb, struct gemcut *gcut, int id, int ai)
+gemcut_require_by_id_main(mrb_state *mrb, struct gemcut *gcut, int id, int *ai)
 {
   const struct mgem_spec *spec = &mgems_list[id];
 
@@ -350,7 +350,12 @@ gemcut_require_by_id_main(mrb_state *mrb, struct gemcut *gcut, int id, int ai)
   gemcut_set_loaded_by_id(gcut, id);
   if (spec->gem_init) {
     aux_ignite_gem_init(mrb, spec->gem_init);
-    mrb_gc_arena_restore(mrb, ai);
+    int ai1 = mrb_gc_arena_save(mrb);
+    if (ai1 < *ai) {
+      *ai = ai1;
+    } else {
+      mrb_gc_arena_restore(mrb, *ai);
+    }
   }
 }
 
@@ -363,7 +368,8 @@ gemcut_require_by_id_main_top(mrb_state *mrb, void *opaque)
     p->gcut->set_atexit = true;
   }
 
-  gemcut_require_by_id_main(mrb, p->gcut, p->id, mrb_gc_arena_save(mrb));
+  int ai = mrb_gc_arena_save(mrb);
+  gemcut_require_by_id_main(mrb, p->gcut, p->id, &ai);
 
   return mrb_true_value();
 }
