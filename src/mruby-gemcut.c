@@ -419,6 +419,36 @@ gemcut_s_require(mrb_state *mrb, mrb_value mod)
   return gemcut_require_main(mrb, (void *)(uintptr_t)name);
 }
 
+/*
+ *  call-seq:
+ *      facet(*features)   ->   nil
+ *
+ *  複数の GEM 名を指定できる `require` メソッドです。
+ *  常に `nil` を返します。
+ */
+static mrb_value
+gemcut_s_facet(mrb_state *mrb, mrb_value mod)
+{
+  (void)mod;
+
+  const mrb_value *argv;
+  mrb_int argc;
+  mrb_get_args(mrb, "*", &argv, &argc);
+
+  // 直接 gemcut_require_main() を呼び出したいところだが、GENERATED_TMP_mrb_***_gem_init() が
+  // 呼び出す mrb_load_proc() は現在のメソッドの引数スタックを破壊する。
+  // これにより引数がすべて GC により回収されることで SIGSEGV を起こす可能性がある。
+  // 回避策として Gemcut.require を VM 経由で呼び出す。
+  mrb_value proc = mrb_obj_value(mrb_proc_new_cfunc(mrb, gemcut_s_require));
+  int ai = mrb_gc_arena_save(mrb);
+  for (int i = 0; i < (int)argc; i++) {
+    mrb_yield_argv(mrb, proc, 1, &argv[i]);
+    mrb_gc_arena_restore(mrb, ai);
+  }
+
+  return mrb_nil_value();
+}
+
 static mrb_value
 gemcut_loaded_features_main(mrb_state *mrb, void *opaque)
 {
@@ -647,6 +677,7 @@ gemcut_define_module(mrb_state *mrb, void *unused)
     struct RClass *gemcut_mod = mrb_define_module(mrb, "Gemcut");
 
     mrb_define_class_method(mrb, gemcut_mod, "require", gemcut_s_require, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, gemcut_mod, "facet", gemcut_s_facet, MRB_ARGS_ANY());
 
     mrb_define_class_method(mrb, gemcut_mod, "loaded_features", gemcut_s_loaded_features, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, gemcut_mod, "loaded_feature_count", gemcut_s_loaded_feature_count, MRB_ARGS_NONE());
