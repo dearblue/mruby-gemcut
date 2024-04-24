@@ -5,11 +5,14 @@
 一つの実行ファイル、同じプロセス空間で必要に応じて機能を省略・制限した個別の mruby VM を構成可能です。
 
 
-## だいじなおやくそく！
+## ちゅういとせいげん
 
 `mrb_open()` した後は、`mruby-gemcut` が初期化されているだけで他の GEM は利用できない状態です。
 `Gemcut.require` メソッドや `mruby_gemcut_require()` 関数を呼び出して他の GEM を有効化出来ます。
 例えば `Gemcut.require "mruby-print"` すれば `Kernel#puts` や `Kernel#p` などが利用できるようになります。
+
+また、mruby-gemcut は `mrb_open()` を行う他の GEM との組み合わせで問題が発生することがあります。
+例えば <https://github.com/mattn/mruby-thread> は `Thread.new` の内部で `mrb_open()` を行うため、mruby-gemcut を組み込むとうまく動作しません。
 
 
 ## できること
