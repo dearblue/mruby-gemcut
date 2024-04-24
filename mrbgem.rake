@@ -1,7 +1,7 @@
 #!ruby
 
 require "fileutils"
-require_relative "buildlib/internals"
+require_relative "helper/internals"
 
 using Gemcut::Internals
 
