@@ -17,13 +17,43 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
   add_dependency "mruby-error", core: "mruby-error" if Gemcut.need_error_gem?
 
   class << self
-    def add_blacklist(mgem)
-      @blacklist << mgem
+    def add_denylist(*gems)
+      gems.flatten!
+      gems.each { |e| e.ensure_string }
+      @models[0].deny.concat gems
+      self
+    end
+    alias add_blacklist add_denylist
+
+    def add_model(name, bundle: nil, allow: nil, deny: nil)
+      name = name.ensure_string
+      raise NameError, "bad empty `name` for model" if name.empty?
+      raise NameError, "already exist model `name` - #{name}" if @models.find { |m| m.name == name }
+
+      bundle = bundle.ensure_array_or_nil
+      allow = allow.ensure_array_or_state
+      deny = deny.ensure_array_or_state
+      raise ArgumentError, "need the `bundle`, `allow` or `deny` arguments" if bundle.empty? && allow.empty? && deny.empty?
+      raise ArgumentError, "the `allow` and `deny` arguments are exclusive" unless allow.empty? || deny.empty?
+
+      case
+      when allow == true
+        deny = false
+      when allow == false
+        deny = true
+      when deny == true
+        allow = false
+      when deny == false
+        allow = true
+      end
+
+      @models << Gemcut::Model.new(name, bundle, allow, deny, caller)
+
       self
     end
   end
 
-  @blacklist = []
+  @models = [Gemcut::Model.new("default", ["mruby-gemcut"], [], [], caller)]
 
   if cc.command =~ /\b(?:g?cc|clang)d*\b/
     cc.flags << %w(-Wno-declaration-after-statement)

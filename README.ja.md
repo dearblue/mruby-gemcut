@@ -7,9 +7,11 @@
 
 ## ちゅういとせいげん
 
-`mrb_open()` した後は、`mruby-gemcut` が初期化されているだけで他の GEM は利用できない状態です。
+`mrb_open()` した後は、`mruby-gemcut` が初期化されているだけで他の GEM は利用できない状態です [^1]。
 `Gemcut.require` メソッドや `mruby_gemcut_require()` 関数を呼び出して他の GEM を有効化出来ます。
 例えば `Gemcut.require "mruby-print"` すれば `Kernel#puts` や `Kernel#p` などが利用できるようになります。
+
+[^1]: `MRuby::Build#enable_bintest` が有効となっている場合、bintest のために一部の GEM が有効化されます。
 
 また、mruby-gemcut は `mrb_open()` を行う他の GEM との組み合わせで問題が発生することがあります。
 例えば <https://github.com/mattn/mruby-thread> は `Thread.new` の内部で `mrb_open()` を行うため、mruby-gemcut を組み込むとうまく動作しません。
@@ -85,11 +87,11 @@ MRuby::Build.new do |conf|
 end
 ```
 
-### ブラックリスト
+### 無効化リスト (ブラックリスト)
 
 `mruby_gemcut_require()` 関数や `Gemcut.require` メソッドによって有効化出来ない mruby gems を指定することが出来ます。
 
-たとえば "mruby-io" と "mruby-socket" をブラックリストに追加したい場合は次のようにします:
+たとえば "mruby-io" と "mruby-socket" を無効化リストに追加したい場合は次のようにします:
 
 ```ruby
 # build_config.rb
@@ -148,12 +150,12 @@ end
 int
 main(int argc, char *argv[])
 {
-  mrb_state *mrb1 = mrb_open();
+  mrb_state *mrb1 = mrb_open_core();
   mruby_gemcut_require(mrb1, "mruby-sprintf");
   mruby_gemcut_require(mrb1, "mruby-print");
   mruby_gemcut_lock(mrb1);                      /* これ以降は mrb1 に対して mruby_gemcut_require() を受け付けない */
 
-  mrb_state *mrb2 = mrb_open();
+  mrb_state *mrb2 = mrb_open_core();
   mruby_gemcut_imitate_to(mrb2, mrb1);          /* mrb1 と同じ mruby gems の構成にする */
   mruby_gemcut_require(mrb2, "mruby-math");
   mruby_gemcut_require(mrb2, "mruby-gemcut");   /* Gemcut Ruby API を使う場合に指定する */

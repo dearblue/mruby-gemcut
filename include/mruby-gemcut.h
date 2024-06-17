@@ -6,15 +6,39 @@
 
 MRB_BEGIN_DECL
 
-/* 初期化 API */
+/* Gemcut Model API */
 
 /**
- *  +Gemcut+ モジュールを定義します。
+ * `model_name` を適用します。
  *
- *  これは `mrb_open_core()` を行った後で使えます。
- *  `mrb_open()` の後では呼び出しても何も行いません。
+ * `mrb_open_core()` した後に呼び出すことが出来ます。
+ *
+ * すでに何らかの GEM を初期化している場合、この関数は失敗します。
+ * これは `mrb_open()` したあとに使うことは出来ないことを意味します。
+ *
+ * 成功すれば 0 を、失敗すれば 0 ではない値を返します。
  */
-MRB_API void mruby_gemcut_define_module(mrb_state *mrb);
+MRB_API int mruby_gemcut_model_select(mrb_state *mrb, const char model_name[]);
+
+/**
+ * 現在適用中の Gemcut モデル名を取得します。
+ */
+MRB_API const char *mruby_gemcut_model_name(mrb_state *mrb);
+
+/**
+ * ビルド時に組み込まれた Gemcut モデル名の一覧を配列にして返します。
+ */
+MRB_API mrb_value mruby_gemcut_model_list(mrb_state *mrb);
+
+/**
+ * ビルド時に組み込まれた Gemcut モデルの要素数を返します。
+ */
+MRB_API size_t mruby_gemcut_model_size(mrb_state *mrb);
+
+/**
+ * 引数で指定した gemcut model が利用可能かどうかを返します。
+ */
+MRB_API mrb_bool mruby_gemcut_model_p(mrb_state *mrb, const char model_name[]);
 
 /* gem 加工 API */
 

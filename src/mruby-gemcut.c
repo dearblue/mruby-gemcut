@@ -54,7 +54,6 @@ struct mgem_spec
   const char *name;
   void (*gem_init)(mrb_state *mrb);
   void (*gem_final)(mrb_state *mrb);
-  mrb_bool available:1;
   const uint32_t numdeps:16;
   const uint16_t *deps;
 };
@@ -86,7 +85,21 @@ struct gemcut
   bool defined_module:1;
   enum gemcut_status status:2;
   bitmap_unit loaded[MGEMS_BITMAP_UNITS];
+  const struct gemcut_model *model;
 };
+
+static mrb_value gemcut_require_by_id(mrb_state *mrb, struct gemcut *gcut, int id);
+
+static mrb_bool
+gemcut_is_any_loaded(const struct gemcut *g)
+{
+  bitmap_unit m = 0;
+  for (int i = 0; i < MGEMS_BITMAP_UNITS; i++) {
+    m |= g->loaded[i];
+  }
+
+  return !!m;
+}
 
 static bool
 gemcut_loaded_p_by_id(const struct gemcut *g, int id)
@@ -136,6 +149,19 @@ gemcut_lookup(mrb_state *mrb, const char name[], mrb_bool autoprefix)
   return -1;
 }
 
+static mrb_bool
+model_is_available(const struct gemcut_model *model, size_t id)
+{
+  return (id < MGEMS_POPULATION) &&
+         (model->avail[id / MGEMS_UNIT_BITS] & (1UL << (id % MGEMS_UNIT_BITS)));
+}
+
+static mrb_bool
+model_is_available_by_gem(const struct gemcut_model *model, const struct mgem_spec *gem)
+{
+  return model_is_available(model, (size_t)(gem - mgems_list));
+}
+
 #define id_gemcut mrb_intern_lit(mrb, "mruby-gemcut-structure")
 
 static const mrb_data_type gemcut_type = { "mruby-gemcut", mrb_free };
@@ -158,6 +184,7 @@ get_gemcut_main(mrb_state *mrb, struct gemcut **gcutp)
     *gcutp = (struct gemcut *)d->data;
     mrb_gc_arena_restore(mrb, ai);
     v = mrb_obj_value(d);
+    (*gcutp)->model = &gemcut_models[0];
   }
 
   return v;
@@ -182,6 +209,87 @@ get_gemcut_noraise(mrb_state *mrb)
   } else {
     return gcut;
   }
+}
+
+static int
+gemcut_model_require_bundles(mrb_state *mrb, struct gemcut *gcut)
+{
+  for (int i = 0; i < MGEMS_POPULATION; i++) {
+    if (gcut->model->bundle[i / MGEMS_UNIT_BITS] & (1UL << (i % MGEMS_UNIT_BITS))) {
+      mrb_value ret = gemcut_require_by_id(mrb, gcut, i);
+      if (mrb_exception_p(ret)) {
+        return 1;
+      }
+    }
+  }
+
+  return 0;
+}
+
+MRB_API int
+mruby_gemcut_model_select(mrb_state *mrb, const char model_name[])
+{
+  struct gemcut *gcut = get_gemcut_noraise(mrb);
+  if (gcut == NULL || gemcut_is_any_loaded(gcut)) { return 1; }
+
+  gcut->model = &gemcut_models[0];
+  if (model_name) {
+    FOREACH_ALIST(const struct gemcut_model, *p, gemcut_models) {
+      if (p->name && strcmp(p->name, model_name) == 0) {
+        gcut->model = p;
+        break;
+      }
+    }
+  }
+
+  return gemcut_model_require_bundles(mrb, gcut);
+}
+
+MRB_API const char *
+mruby_gemcut_model_name(mrb_state *mrb)
+{
+  struct gemcut *gcut = get_gemcut_noraise(mrb);
+  if (gcut == NULL) {
+    return NULL;
+  } else {
+    return gcut->model->name;
+  }
+}
+
+MRB_API mrb_value
+mruby_gemcut_model_list(mrb_state *mrb)
+{
+  mrb_value list = mrb_ary_new_capa(mrb, sizeof(gemcut_models) / sizeof(gemcut_models[0]) - 1);
+  FOREACH_ALIST(const struct gemcut_model, *p, gemcut_models) {
+    if (p->name) {
+      mrb_ary_push(mrb, list, mrb_str_new_static(mrb, p->name, strlen(p->name)));
+    }
+  }
+  return list;
+}
+
+MRB_API size_t
+mruby_gemcut_model_size(mrb_state *mrb)
+{
+  (void)mrb;
+
+  return sizeof(gemcut_models) / sizeof(gemcut_models[0]) - 1 /* reject the default */;
+}
+
+MRB_API mrb_bool
+mruby_gemcut_model_p(mrb_state *mrb, const char model_name[])
+{
+  (void)mrb;
+
+  if (model_name) {
+    FOREACH_ALIST(const struct gemcut_model, *p, gemcut_models) {
+      if (p->name && strcmp(p->name, model_name) == 0) {
+        return TRUE;
+      }
+    }
+  }
+
+  return FALSE;
 }
 
 static mrb_noreturn void
@@ -210,8 +318,7 @@ gemcut_imitate_to_main(mrb_state *dest, void *opaque)
 
   for (int i = 0; i < MGEMS_POPULATION; i++) {
     if (gemcut_loaded_p_by_id(gsrc, i) && !gemcut_loaded_p_by_id(gdest, i)) {
-      // TODO: mruby_gemcut_require() ではなくて直接 gemcut_require_by_id_main_top() を呼び出すようにする
-      mruby_gemcut_require(dest, mgems_list[i].name);
+      gemcut_require_by_id(dest, gdest, i);
     }
   }
 
@@ -375,6 +482,22 @@ gemcut_require_by_id_main_top(mrb_state *mrb, void *opaque)
 }
 
 static mrb_value
+gemcut_require_by_id(mrb_state *mrb, struct gemcut *gcut, int id)
+{
+  struct gemcut_require_by_id_main_top args = { gcut, id };
+  gemcut_snapshot_gc_arena(mrb);
+  mrb_bool error;
+  mrb_value ret = mrb_protect_error(mrb, gemcut_require_by_id_main_top, &args, &error);
+  gemcut_rollback_gc_arena(mrb);
+
+  if (error && mrb->jmp) {
+    mrb_exc_raise(mrb, ret);
+  }
+
+  return ret;
+}
+
+static mrb_value
 gemcut_require_main(mrb_state *mrb, void *opaque)
 {
   struct gemcut *gcut = get_gemcut(mrb);
@@ -393,22 +516,11 @@ gemcut_require_main(mrb_state *mrb, void *opaque)
     return mrb_false_value();
   }
 
-  const struct mgem_spec *spec = &mgems_list[id];
-  if (!spec->available) {
-    return gemcut_load_error(mrb, spec->name);
+  if (!model_is_available(gcut->model, id)) {
+    return gemcut_load_error(mrb, mgems_list[id].name);
   }
 
-  struct gemcut_require_by_id_main_top args = { gcut, id };
-  gemcut_snapshot_gc_arena(mrb);
-  mrb_bool error;
-  mrb_value ret = mrb_protect_error(mrb, gemcut_require_by_id_main_top, &args, &error);
-  gemcut_rollback_gc_arena(mrb);
-
-  if (error && mrb->jmp) {
-    mrb_exc_raise(mrb, ret);
-  }
-
-  return ret;
+  return gemcut_require_by_id(mrb, gcut, id);
 }
 
 DEFINE_PROTECTED_FUNCTION(
@@ -539,11 +651,12 @@ static mrb_value
 gemcut_loadable_features_main(mrb_state *mrb, void *opaque)
 {
   (void)opaque;
-  (void)get_gemcut(mrb);
+
+  const struct gemcut_model *model = get_gemcut(mrb)->model;
 
   mrb_value ary = mrb_ary_new(mrb);
   FOREACH_ALIST(const struct mgem_spec, *mgem, mgems_list) {
-    if (mgem->available) {
+    if (model_is_available_by_gem(model, mgem)) {
       mrb_ary_push(mrb, ary, mrb_str_new_static(mrb, mgem->name, strlen(mgem->name)));
     }
   }
@@ -568,11 +681,14 @@ static mrb_value
 gemcut_loadable_feature_count_main(mrb_state *mrb, void *opaque)
 {
   (void)opaque;
-  (void)get_gemcut(mrb);
+
+  const struct gemcut_model *model = get_gemcut(mrb)->model;
 
   int count = 0;
   FOREACH_ALIST(const struct mgem_spec, *mgem, mgems_list) {
-    count += mgem->available;
+    if (model_is_available_by_gem(model, mgem)) {
+      count++;
+    }
   }
   return mrb_fixnum_value(count);
 }
@@ -593,11 +709,11 @@ gemcut_s_loadable_feature_count(mrb_state *mrb, mrb_value mod)
 static mrb_value
 gemcut_loadable_feature_p_main(mrb_state *mrb, void *opaque)
 {
-  (void)get_gemcut(mrb);
+  struct gemcut *g = get_gemcut(mrb);
 
   const char *name = (const char *)opaque;
   int id = gemcut_lookup(mrb, name, TRUE);
-  if (id >= 0 && mgems_list[id].available) {
+  if (model_is_available(g->model, id)) {
     return mrb_true_value();
   } else {
     return mrb_false_value();
@@ -670,48 +786,28 @@ gemcut_s_seal(mrb_state *mrb, mrb_value mod)
   return gemcut_seal_main(mrb, NULL);
 }
 
-static mrb_value
-gemcut_define_module(mrb_state *mrb, void *unused)
-{
-  (void)unused;
-
-  struct gemcut *g = get_gemcut(mrb);
-  if (!g->defined_module && g->status < gemcut_sealed) {
-    g->defined_module = true;
-
-    NO_PRESYM(mrb_intern_lit(mrb, "Gemcut"));
-    struct RClass *gemcut_mod = mrb_define_module(mrb, "Gemcut");
-
-    mrb_define_class_method(mrb, gemcut_mod, "require", gemcut_s_require, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, gemcut_mod, "facet", gemcut_s_facet, MRB_ARGS_ANY());
-
-    mrb_define_class_method(mrb, gemcut_mod, "loaded_features", gemcut_s_loaded_features, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, gemcut_mod, "loaded_feature_count", gemcut_s_loaded_feature_count, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, gemcut_mod, "loaded_feature?", gemcut_s_loaded_feature_p, MRB_ARGS_REQ(1));
-
-    mrb_define_class_method(mrb, gemcut_mod, "loadable_features", gemcut_s_loadable_features, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, gemcut_mod, "loadable_feature_count", gemcut_s_loadable_feature_count, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, gemcut_mod, "loadable_feature?", gemcut_s_loadable_feature_p, MRB_ARGS_REQ(1));
-
-    mrb_define_class_method(mrb, gemcut_mod, "lock", gemcut_s_lock, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, gemcut_mod, "lock!", gemcut_s_lock, MRB_ARGS_NONE());
-
-    mrb_define_class_method(mrb, gemcut_mod, "seal", gemcut_s_seal, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, gemcut_mod, "seal!", gemcut_s_seal, MRB_ARGS_NONE());
-  }
-
-  return mrb_nil_value();
-}
-
-DEFINE_PROTECTED_FUNCTION(
-    MRB_API void mruby_gemcut_define_module(mrb_state *mrb),
-    gemcut_define_module, NULL, RESULT_VOID, RESULT_VOID_ERROR)
-
 void
 mrb_mruby_gemcut_gem_init(mrb_state *mrb)
 {
-  gemcut_define_module(mrb, NULL);
-  gemcut_set_loaded_by_id(get_gemcut(mrb), MRUBY_GEMCUT_ID);
+  NO_PRESYM(mrb_intern_lit(mrb, "Gemcut"));
+  struct RClass *gemcut_mod = mrb_define_module(mrb, "Gemcut");
+
+  mrb_define_class_method(mrb, gemcut_mod, "require", gemcut_s_require, MRB_ARGS_REQ(1));
+  mrb_define_class_method(mrb, gemcut_mod, "facet", gemcut_s_facet, MRB_ARGS_ANY());
+
+  mrb_define_class_method(mrb, gemcut_mod, "loaded_features", gemcut_s_loaded_features, MRB_ARGS_NONE());
+  mrb_define_class_method(mrb, gemcut_mod, "loaded_feature_count", gemcut_s_loaded_feature_count, MRB_ARGS_NONE());
+  mrb_define_class_method(mrb, gemcut_mod, "loaded_feature?", gemcut_s_loaded_feature_p, MRB_ARGS_REQ(1));
+
+  mrb_define_class_method(mrb, gemcut_mod, "loadable_features", gemcut_s_loadable_features, MRB_ARGS_NONE());
+  mrb_define_class_method(mrb, gemcut_mod, "loadable_feature_count", gemcut_s_loadable_feature_count, MRB_ARGS_NONE());
+  mrb_define_class_method(mrb, gemcut_mod, "loadable_feature?", gemcut_s_loadable_feature_p, MRB_ARGS_REQ(1));
+
+  mrb_define_class_method(mrb, gemcut_mod, "lock", gemcut_s_lock, MRB_ARGS_NONE());
+  mrb_define_class_method(mrb, gemcut_mod, "lock!", gemcut_s_lock, MRB_ARGS_NONE());
+
+  mrb_define_class_method(mrb, gemcut_mod, "seal", gemcut_s_seal, MRB_ARGS_NONE());
+  mrb_define_class_method(mrb, gemcut_mod, "seal!", gemcut_s_seal, MRB_ARGS_NONE());
 }
 
 void
