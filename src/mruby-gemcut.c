@@ -199,9 +199,12 @@ get_gemcut(mrb_state *mrb)
 static struct gemcut *
 get_gemcut_noraise(mrb_state *mrb)
 {
+  int ai = mrb_gc_arena_save(mrb);
   struct gemcut *gcut;
   mrb_bool state;
   mrb_protect_error(mrb, (mrb_value (*)(mrb_state *, void *))get_gemcut_main, &gcut, &state);
+  mrb_gc_arena_restore(mrb, ai);
+
   if (state) {
     return NULL;
   } else {
