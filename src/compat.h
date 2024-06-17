@@ -131,4 +131,20 @@ aux_ignite_gem_init(mrb_state *mrb, void (*geminit)(mrb_state *mrb))
 }
 #endif
 
+#if AUX_MRUBY_RELEASE_NO <= 10200
+static struct RClass *
+mrb_exc_get(mrb_state *mrb, const char name[])
+{
+  mrb_value v = mrb_const_get(mrb, mrb_obj_value(mrb->object_class), mrb_intern_cstr(mrb, name));
+  mrb_check_type(mrb, v, MRB_TT_CLASS);
+
+  struct RClass *c = mrb_class_ptr(v);
+  if (MRB_INSTANCE_TT(c) == MRB_TT_EXCEPTION) {
+    return c;
+  } else {
+    return mrb->eException_class;
+  }
+}
+#endif
+
 #endif // MRUBY_GEMCUT_COMPAT_H

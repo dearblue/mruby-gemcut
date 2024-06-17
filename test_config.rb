@@ -47,6 +47,8 @@ MRuby::Build.new do
 end
 
 config["builds"].each_pair do |n, c|
+  next unless MRuby::Source::MRUBY_RELEASE_NO > 10200 || !c["c++abi"]
+
   MRuby::Build.new(n) do |conf|
     toolchain :clang
 
