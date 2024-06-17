@@ -1,5 +1,5 @@
 freebsd_instance:
-  image: freebsd-13-2-release-amd64
+  image: freebsd-14-1-release-amd64-ufs
 
 task:
   env:
@@ -13,5 +13,6 @@ task:
   - cd ${MRUBY_DIR}
   - export MRUBY_CONFIG=../.cirrus/build_config.rb
   - rake clean
-  - rake -mv test
+  - rake -mv test:build
+  - rake -v test
   - build/host/bin/mruby-gemcut-test
