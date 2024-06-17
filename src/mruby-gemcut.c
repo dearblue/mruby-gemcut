@@ -356,74 +356,131 @@ gemcut_cleanup(mrb_state *mrb)
   }
 }
 
-#define ID_GCARENA  mrb_intern_lit(mrb, "gcarena@mruby-gemcut")
+#ifdef MRB_GC_RED // MRUBY_RELEASE_NO >= 30100
+# define MAKE_FUNC_AGET_PROC_FROM_CFUNC(NAME, FUNC)                           \
+  static mrb_value                                                            \
+  NAME(mrb_state *mrb)                                                        \
+  {                                                                           \
+    static const struct RProc proc = {                                        \
+      NULL, NULL, MRB_TT_PROC, MRB_GC_RED, MRB_FL_OBJ_IS_FROZEN | MRB_PROC_CFUNC_FL, \
+      { (const mrb_irep *)FUNC }, NULL, { NULL }                              \
+    };                                                                        \
+    return mrb_obj_value((void *)&proc);                                      \
+  }                                                                           \
 
-static void
+#else
+# define MAKE_FUNC_AGET_PROC_FROM_CFUNC(NAME, FUNC)                           \
+  static mrb_value                                                            \
+  NAME(mrb_state *mrb)                                                        \
+  {                                                                           \
+    mrb_value val = mrb_gv_get(mrb, mrb_intern_lit(mrb, #FUNC ":mruby-gemcut")); \
+    if (mrb_proc_p(val)) {                                                    \
+      struct RProc *p = mrb_proc_ptr(val);                                    \
+                                                                              \
+      if (MRB_PROC_CFUNC_P(p) && p->body.func == FUNC) {                      \
+        return val;                                                           \
+      }                                                                       \
+    }                                                                         \
+                                                                              \
+    int ai = mrb_gc_arena_save(mrb);                                          \
+    struct RProc *p = mrb_proc_new_cfunc(mrb, FUNC);                          \
+    mrb_gv_set(mrb, mrb_intern_lit(mrb, #FUNC ":mruby-gemcut"), mrb_obj_value(p)); \
+    mrb_gc_arena_restore(mrb, ai);                                            \
+    p->c = NULL;                                                              \
+                                                                              \
+    return mrb_obj_value(p);                                                  \
+  }                                                                           \
+
+#endif
+
+static mrb_value
 gemcut_snapshot_gc_arena(mrb_state *mrb)
 {
   const mrb_gc *gc = &mrb->gc;
-  mrb_value gcarena = mrb_ary_new_capa(mrb, gc->arena_idx);
+  int ai = gc->arena_idx;
+  mrb_value arena = mrb_ary_new_capa(mrb, ai);
+
   struct RBasic **bp = gc->arena;
-  size_t i = gc->arena_idx;
-
-  for (; i > 0; i--, bp++) {
-    mrb_ary_push(mrb, gcarena, mrb_obj_value(*bp));
+  mrb_value *vect = (mrb_value *)RARRAY_PTR(arena);
+  for (int i = ai; i > 0; i--) {
+    *vect++ = mrb_obj_value(*bp++);
   }
+  ARY_SET_LEN(mrb_ary_ptr(arena), ai);
+  mrb_write_barrier(mrb, mrb_basic_ptr(arena));
+  mrb_obj_freeze(mrb, arena);
+  mrb_basic_ptr(arena)->c = NULL;
 
-  mrb_obj_freeze(mrb, gcarena);
-  mrb_gv_set(mrb, ID_GCARENA, gcarena);
+  return arena;
 }
-
-static void
-gemcut_rollback_gc_arena_fallback(mrb_state *mrb, mrb_gc *gc, mrb_value gcarena)
-{
-  int i = gc->arena_capa;
-  struct RBasic **bp = gc->arena;
-
-  for (; i > 0; i--, bp++) {
-    *bp = (struct RBasic *)mrb->object_class;
-  }
-
-  *gc->arena = (struct RBasic *)mrb_obj_ptr(gcarena);
-  gc->arena_idx = 1;
-}
-
-static void
-gemcut_rollback_gc_arena(mrb_state *mrb)
-{
-  mrb_gc *gc = &mrb->gc;
-  mrb_value gcarena = mrb_gv_get(mrb, ID_GCARENA);
-  mrb_gv_remove(mrb, ID_GCARENA);
-  size_t arenalen = RARRAY_LEN(gcarena);
 
 #ifdef MRB_GC_FIXED_ARENA
-  if (arenalen > MRB_GC_ARENA_SIZE) {
-    gemcut_rollback_gc_arena_fallback(mrb, gc, gcarena);
-    return;
-  }
+# define MRB_GC_ARENA_CAPA(GC) MRB_GC_ARENA_SIZE
 #else
-  if (arenalen > (size_t)gc->arena_capa) {
-    mrb_value *p = (mrb_value *)mrb_realloc_simple(mrb, gc->arena, arenalen * sizeof(mrb_value));
-    if (p == NULL) {
-      gemcut_rollback_gc_arena_fallback(mrb, gc, gcarena);
-      return;
-    }
-  }
+# define MRB_GC_ARENA_CAPA(GC) ((GC)->arena_capa)
 #endif
 
-  struct RBasic **bp = gc->arena;
-  const mrb_value *vp = RARRAY_PTR(gcarena);
-  size_t i = arenalen;
+#ifndef MRB_GC_FIXED_ARENA
+static void
+upgrade_arena(mrb_state *mrb, mrb_gc *gc, size_t estimate)
+{
+  mrb_assert(gc->arena_capa < MRB_GC_ARENA_SIZE);
+  size_t capa = MRB_GC_ARENA_SIZE;
+  while (capa < estimate) {
+    capa += capa >> 1;
+  }
+  gc->arena = (struct RBasic **)mrb_realloc(mrb, gc->arena, capa * sizeof(struct RBasic *));
+  gc->arena_capa = capa;
+}
+#endif
 
-  for (; i > 0; i--, bp++, vp++) {
-    if (mrb_immediate_p(*vp)) {
-      *bp = (struct RBasic *)mrb->object_class;
+static void
+gemcut_rollback_gc_arena(mrb_state *mrb, mrb_value arena)
+{
+  mrb_gc *gc = &mrb->gc;
+
+  if (RARRAY_LEN(arena) > MRB_GC_ARENA_CAPA(gc)) {
+#ifdef MRB_GC_FIXED_ARENA
+    MRB_RAISE_LIT(mrb, mrb->eException_class,
+                  "[CRITICAL ERROR]"
+                  " IN " __FILE__ ":" MRB_STRINGIZE(__LINE__) ","
+                  " FOR UNKNOWN REASONS, THE NUMBER OF PROTECTED ARENA OBJECTS EXCEEDED THE ORIGINAL GC ARENA."
+                  " A SUDDEN APPLICATION CRASH MAY OCCUR IF PROCESSING CONTINUES."
+                  "[CRITICAL ERROR]");
+#else
+    if (ARY_EMBED_P(mrb_ary_ptr(arena)) || MRB_GC_ARENA_CAPA(gc) < MRB_GC_ARENA_SIZE) {
+      upgrade_arena(mrb, gc, RARRAY_LEN(arena));
     } else {
-      *bp = (struct RBasic *)mrb_obj_ptr(*vp);
+      const mrb_value *ap = RARRAY_PTR(arena);
+      struct RBasic **bp = (struct RBasic **)ap;
+      int i = RARRAY_LEN(arena);
+      ap += i;
+      bp += i;
+      for (; i > 0; i--) {
+        mrb_assert(!mrb_immediate_p(*ap));
+        *++bp = mrb_basic_ptr(*++ap);
+      }
+      mrb_free(mrb, gc->arena);
+      gc->arena = bp;
+# if MRUBY_RELEASE_NO >= 10400
+      mrb_ary_ptr(arena)->as.heap.ptr = NULL;
+      ARY_SET_LEN(mrb_ary_ptr(arena), 0);
+      mrb_ary_ptr(arena)->as.heap.aux.capa = 0;
+# else
+      mrb_ary_ptr(arena)->ptr = NULL;
+      mrb_ary_ptr(arena)->len = 0;
+      mrb_ary_ptr(arena)->aux.capa = 0;
+# endif
     }
+#endif
   }
 
-  gc->arena_idx = arenalen;
+  struct RBasic **bp = gc->arena;
+  const mrb_value *ap = RARRAY_PTR(arena);
+  gc->arena_idx = RARRAY_LEN(arena);
+  for (int i = gc->arena_idx; i > 0; i--) {
+    mrb_assert(!mrb_immediate_p(*ap));
+    *bp++ = mrb_basic_ptr(*ap++);
+  }
 }
 
 static mrb_value
@@ -437,10 +494,11 @@ gemcut_load_error(mrb_state *mrb, const char *name)
   return err;
 }
 
-struct gemcut_require_by_id_main_top
+struct gemcut_require_by_id_main
 {
   struct gemcut *gcut;
   int id;
+  int ai;
 };
 
 static void
@@ -462,7 +520,14 @@ gemcut_require_by_id_main(mrb_state *mrb, struct gemcut *gcut, int id, int *ai)
 
   gemcut_set_loaded_by_id(gcut, id);
   if (spec->gem_init) {
-    aux_ignite_gem_init(mrb, spec->gem_init);
+#if AUX_MRUBY_RELEASE_NO >= 30100
+    spec->gem_init(mrb);
+#else
+    int cioff = mrb->c->ci - mrb->c->cibase;
+    spec->gem_init(mrb);
+    mrb->c->ci = mrb->c->cibase + cioff;
+#endif
+
     int ai1 = mrb_gc_arena_save(mrb);
     if (ai1 < *ai) {
       *ai = ai1;
@@ -473,32 +538,81 @@ gemcut_require_by_id_main(mrb_state *mrb, struct gemcut *gcut, int id, int *ai)
 }
 
 static mrb_value
-gemcut_require_by_id_main_top(mrb_state *mrb, void *opaque)
+gemcut_require_by_id_guard3(mrb_state *mrb, mrb_value self)
 {
-  struct gemcut_require_by_id_main_top *p = (struct gemcut_require_by_id_main_top *)opaque;
-  if (!p->gcut->set_atexit) {
-    mrb_state_atexit(mrb, gemcut_cleanup);
-    p->gcut->set_atexit = true;
+  const mrb_value *argv = CI_STACK(mrb->c) + 1;
+  if (CI_FLAT_ARGC(mrb->c) != 1 || !mrb_cptr_p(argv[0])) {
+    mrb_raise(mrb, E_ARGUMENT_ERROR, "broken assumptions");
   }
 
-  int ai = mrb_gc_arena_save(mrb);
+  struct gemcut_require_by_id_main *p = (struct gemcut_require_by_id_main *)mrb_cptr(argv[0]);
+
+  int ai = p->ai;
   gemcut_require_by_id_main(mrb, p->gcut, p->id, &ai);
 
   return mrb_true_value();
 }
 
+MAKE_FUNC_AGET_PROC_FROM_CFUNC(gemcut_require_by_id_guard3_proc, gemcut_require_by_id_guard3)
+
 static mrb_value
-gemcut_require_by_id(mrb_state *mrb, struct gemcut *gcut, int id)
+gemcut_require_by_id_guard2(mrb_state *mrb, void *opaque)
 {
-  struct gemcut_require_by_id_main_top args = { gcut, id };
-  gemcut_snapshot_gc_arena(mrb);
+  mrb_value *p = (mrb_value *)opaque;
+
+  return mrb_yield_with_class(mrb, gemcut_require_by_id_guard3_proc(mrb), 1, p, mrb_top_self(mrb), mrb->object_class);
+}
+
+static mrb_value
+gemcut_require_by_id_guard1(mrb_state *mrb, mrb_value self)
+{
+  const mrb_value *argv = CI_STACK(mrb->c) + 1;
+  if (CI_FLAT_ARGC(mrb->c) != 2 || !mrb_cptr_p(argv[0]) || !mrb_array_p(argv[1])) {
+    mrb_raise(mrb, E_ARGUMENT_ERROR, "broken assumptions");
+  }
+
+  struct gemcut_require_by_id_main *p = (struct gemcut_require_by_id_main *)mrb_cptr(argv[0]);
+  mrb_gc_arena_restore(mrb, p->ai);
+
   mrb_bool error;
-  mrb_value ret = mrb_protect_error(mrb, gemcut_require_by_id_main_top, &args, &error);
-  gemcut_rollback_gc_arena(mrb);
+  mrb_value ret = mrb_protect_error(mrb, gemcut_require_by_id_guard2, (void *)&argv[0], &error);
+  gemcut_rollback_gc_arena(mrb, argv[1]);
 
   if (error && mrb->jmp) {
     mrb_exc_raise(mrb, ret);
   }
+
+  return ret;
+}
+
+MAKE_FUNC_AGET_PROC_FROM_CFUNC(gemcut_require_by_id_guard1_proc, gemcut_require_by_id_guard1)
+
+static mrb_value
+gemcut_require_by_id(mrb_state *mrb, struct gemcut *gcut, int id)
+{
+  //  考慮するべきこと:
+  //    ・mrb_gc_arena_restore(mrb, 0) の形でアリーナからの束縛をすべて解放してしまう GEM がある。
+  //    ・GENERATED_TMP_mrb_***_gem_init() から呼び出される mrb_top_run() は、現在のデータスタックを破壊する。
+  //    ・呼び出し API が C なのか Ruby なのか区別していないため、現在のデータスタックを保護する必要がある。
+  //
+  //  GENERATED_TMP_mrb_***_gem_init()
+  //  mrb_yield_with_class()            // mrb_top_run() からデータスタックを保護する
+  //  mrb_protect_error()               // ensure 相当が目的で、GC アリーナを復帰する
+  //  mrb_yield_with_class()            // 目的は GC アリーナのミラー配列を保護する
+  //  gemcut_require_by_id()            // イマココ！
+
+  if (!gcut->set_atexit) {
+    mrb_state_atexit(mrb, gemcut_cleanup);
+    gcut->set_atexit = true;
+  }
+
+  TODO("mrb_yield_with_class() を経由する MRB_TT_CPTR を避ける (MRB_TT_CDATA に置き換える)")
+
+  struct gemcut_require_by_id_main args = { gcut, id, mrb_gc_arena_save(mrb) };
+  struct { mrb_value args, arena; } argv = { mrb_cptr_value(mrb, &args), gemcut_snapshot_gc_arena(mrb) };
+  mrb_value ret = mrb_yield_with_class(mrb, gemcut_require_by_id_guard1_proc(mrb), 2, &argv.args, mrb_top_self(mrb), mrb->object_class);
+
+  mrb_gc_arena_restore(mrb, args.ai);
 
   return ret;
 }

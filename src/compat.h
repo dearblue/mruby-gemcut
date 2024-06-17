@@ -89,37 +89,6 @@ mrb_protect_error(mrb_state *mrb, mrb_protect_error_f *body, void *opaque, mrb_b
 }
 #endif // AUX_MRUBY_RELEASE_NO <= 30000
 
-#if AUX_MRUBY_RELEASE_NO >= 30100
-static void
-aux_ignite_gem_init(mrb_state *mrb, void (*geminit)(mrb_state *mrb))
-{
-  geminit(mrb);
-}
-#else
-struct aux_ignite_gem_init_body
-{
-  void (*geminit)(mrb_state *);
-};
-
-static mrb_value
-aux_ignite_gem_init_body(mrb_state *mrb, mrb_value func)
-{
-  struct aux_ignite_gem_init_body *p = (struct aux_ignite_gem_init_body *)mrb_cptr(func);
-  p->geminit(mrb);
-  return mrb_nil_value();
-}
-
-static void
-aux_ignite_gem_init(mrb_state *mrb, void (*geminit)(mrb_state *mrb))
-{
-  struct aux_ignite_gem_init_body args = { geminit };
-  struct RProc *proc = mrb_proc_new_cfunc(mrb, aux_ignite_gem_init_body);
-  int cioff = mrb->c->ci - mrb->c->cibase;
-  mrb_yield_with_class(mrb, mrb_obj_value(proc), 0, NULL, mrb_cptr_value(mrb, &args), mrb->object_class);
-  mrb->c->ci = mrb->c->cibase + cioff;
-}
-#endif // AUX_MRUBY_RELEASE_NO < 30100
-
 #if AUX_MRUBY_RELEASE_NO <= 10200
 static struct RClass *
 mrb_exc_get(mrb_state *mrb, const char name[])
@@ -135,5 +104,35 @@ mrb_exc_get(mrb_state *mrb, const char name[])
   }
 }
 #endif
+
+#ifndef mrb_proc_p // mruby-2.1.0 で登場
+# define mrb_proc_p(V)          (!mrb_immediate_p(V) && mrb_basic_ptr(V)->tt == MRB_TT_PROC)
+#endif
+
+#if MRUBY_RELEASE_NO >= 30000
+# define CI_STACK(FC)           ((FC)->ci->stack)
+#else
+# define CI_STACK(FC)           ((FC)->stack)
+#endif
+
+#if MRUBY_RELEASE_NO >= 30100
+# define CI_FLAT_ARGC(FC)       ((FC)->ci->n)
+#else
+# define CI_FLAT_ARGC(FC)       ((FC)->ci->argc)
+#endif
+
+#ifndef ARY_EMBED_P // mruby-1.4.0 で登場
+# define ARY_EMBED_P(A)         (FALSE)
+#endif
+
+#ifndef ARY_SET_LEN
+# define ARY_SET_LEN(A, N)      do { (A)->len = (N); } while (0)
+#endif
+
+#ifndef mrb_exc_new_lit // mruby-3.0.0 で登場
+# define mrb_exc_new_lit(M, C, S) mrb_exc_new_str_lit(M, C, S)
+#endif
+
+#define MRB_RAISE_LIT(MRB, C, STRLIT) mrb_exc_raise(MRB, mrb_exc_new_lit(MRB, C, "" STRLIT))
 
 #endif // MRUBY_GEMCUT_COMPAT_H

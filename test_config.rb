@@ -28,12 +28,12 @@ MRuby::Build.new do
   toolchain :clang
   self.build_dir = File.expand_path("#{buildbase}/#{self.name}")
   enable_debug
+  cxx.flags << "-std=c++11"
 
   gem __dir__ do |g|
     if g.cc.command =~ /\b(?:g?cc|clang)\d*\b/
       g.cc.flags << "-std=c11"
       g.cc.flags << %w(-Wpedantic -Wall -Wextra)
-      g.cxx.flags << "-std=c++11"
       g.cxx.flags << %w(-Wpedantic -Wall -Wextra)
     end
 
@@ -47,7 +47,7 @@ MRuby::Build.new do
 end
 
 config["builds"].each_pair do |n, c|
-  next unless MRuby::Source::MRUBY_RELEASE_NO > 10200 || !c["c++abi"]
+  next unless MRuby::Source::MRUBY_RELEASE_NO > 10200 || !(c["c++abi"] || c["c++exception"])
 
   MRuby::Build.new(n) do |conf|
     toolchain :clang
@@ -62,6 +62,7 @@ config["builds"].each_pair do |n, c|
     enable_bintest if Dir.pwd == MRUBY_ROOT
     enable_cxx_exception if c["c++exception"]
     enable_cxx_abi if c["c++abi"]
+    cxx.flags << "-std=c++11"
 
     cc.defines << [*c["defines"]] << %w(MRB_GC_STRESS)
     cxx.defines << [*c["defines"]] << %w(MRB_GC_STRESS)
