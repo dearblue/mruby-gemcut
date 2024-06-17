@@ -37,18 +37,6 @@ mrb_obj_freeze(mrb_state *mrb, mrb_value obj)
 
 #if AUX_MRUBY_RELEASE_NO <= 30000
 # if defined(MRB_NAN_BOXING) || defined(MRB_WORD_BOXING)
-union gemcut_cptr_wrapper
-{
-  void *ptr;
-  mrb_value val;
-};
-
-union gemcut_cptr_unwrapper
-{
-  mrb_value val;
-  void *ptr;
-};
-
 #  if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) || \
       (defined(__cplusplus) && __cplusplus >= 201103L)
 #  include <assert.h>
@@ -62,14 +50,15 @@ static mrb_value
 aux_cptr_value(mrb_state *mrb, void *ptr)
 {
   (void)mrb;
-  union gemcut_cptr_wrapper payload = { ptr };
+
+  union { void *ptr; mrb_value val; } payload = { ptr };
   return payload.val;
 }
 
 static void *
 aux_cptr(mrb_value val)
 {
-  union gemcut_cptr_unwrapper payload = { val };
+  union { mrb_value val; void *ptr; } payload = { val };
   return payload.ptr;
 }
 # else
@@ -98,7 +87,7 @@ mrb_protect_error(mrb_state *mrb, mrb_protect_error_f *body, void *opaque, mrb_b
   struct mrb_protect_error_wrap wrap = { body, opaque };
   return mrb_protect(mrb, mrb_protect_error_wrap, aux_cptr_value(mrb, &wrap), error);
 }
-#endif // AUX_MRUBY_RELEASE_NO
+#endif // AUX_MRUBY_RELEASE_NO <= 30000
 
 #if AUX_MRUBY_RELEASE_NO >= 30100
 static void
@@ -129,7 +118,7 @@ aux_ignite_gem_init(mrb_state *mrb, void (*geminit)(mrb_state *mrb))
   mrb_yield_with_class(mrb, mrb_obj_value(proc), 0, NULL, mrb_cptr_value(mrb, &args), mrb->object_class);
   mrb->c->ci = mrb->c->cibase + cioff;
 }
-#endif
+#endif // AUX_MRUBY_RELEASE_NO < 30100
 
 #if AUX_MRUBY_RELEASE_NO <= 10200
 static struct RClass *
