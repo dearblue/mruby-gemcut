@@ -9,12 +9,15 @@ config = YAML.load <<'YAML'
     - :core: "mruby-print"
     - :core: "mruby-bin-mrbc"
   builds:
-    nobox:
-      defines: [MRB_INT32, MRB_NO_BOXING]
+    nobox64:
+      defines: [MRB_INT64, MRB_NO_BOXING]
       gem: "mruby-string-ext"
-    wordbox++:
-      defines: [MRB_INT64, MRB_WORD_BOXING]
+    wordbox-c++:
+      defines: MRB_WORD_BOXING
       c++abi: true
+    nanbox32-c++exc:
+      defines: [MRB_INT32, MRB_NAN_BOXING]
+      c++exception: true
 YAML
 
 MRuby::Lockfile.disable rescue nil
@@ -58,7 +61,8 @@ config["builds"].each_pair do |n, c|
     enable_cxx_exception if c["c++exception"]
     enable_cxx_abi if c["c++abi"]
 
-    cc.defines << [*c["defines"]]
+    cc.defines << [*c["defines"]] << %w(MRB_GC_STRESS)
+    cxx.defines << [*c["defines"]] << %w(MRB_GC_STRESS)
     cc.flags << [*c["cflags"]]
 
     Array(config.dig("common", "gems")).each { |*g| gem *g }
