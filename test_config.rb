@@ -33,6 +33,9 @@ MRuby::Build.new do
       g.cxx.flags << "-std=c++11"
       g.cxx.flags << %w(-Wpedantic -Wall -Wextra)
     end
+
+    g.add_model "model1", bundle: %w(mruby-print), deny: %w(mruby-sprintf)
+    g.add_model "model2", bundle: %w(mruby-sprintf), deny: %w(mruby-print)
   end
 
   gembox "default"

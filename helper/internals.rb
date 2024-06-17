@@ -39,6 +39,16 @@ module Gemcut
       end
     end
 
+    refine Numeric do
+      def decide_inttype
+        case
+        when self <   256; "uint8_t"
+        when self < 65536; "uint16_t"
+        else               "uint32_t"
+        end
+      end
+    end
+
     refine Object do
       def ensure_array_or_nil
         [] | self
@@ -109,6 +119,14 @@ module Gemcut
 
       def ensure_array_or_state
         []
+      end
+
+      def bytesize
+        0
+      end
+
+      def b
+        "".b
       end
     end
 
@@ -276,81 +294,96 @@ module Gemcut
              * THE CONTENT YOU CHANGED WILL BE LOST.
              */
 
-            /* NOTE: `struct mgem_spec` is defined in `mruby-gemcut/src/mruby-gemcut.c` */
-
             #define MRUBY_GEMCUT_ID #{gems.index { |g| g.name == "mruby-gemcut" }}
             #define MGEMS_POPULATION #{gems.size}
             #define MGEMS_BITMAP_UNITS #{gems.empty? ? 1 : (gems.size + (unit_bits - 1)) / unit_bits}
             #define MGEMS_UNIT_BITS #{unit_bits}
+
             typedef uint32_t bitmap_unit;
+            typedef #{(gems.sum { |g| g.name.bytesize } + models.sum { |m| m.name.bytesize }).decide_inttype} gemcut_name_index_t;
+            typedef #{gems.sum { |g| g.deps.size }.decide_inttype} gemcut_deps_index_t;
+            typedef void init_final_f(mrb_state *);
 
             struct gemcut_model
             {
-              const char *name;
               bitmap_unit bundle[MGEMS_BITMAP_UNITS];
               bitmap_unit avail[MGEMS_BITMAP_UNITS];
+              gemcut_name_index_t name_index_end;
             };
 
-            #{
-              gems.each_with_object("") { |g, a|
-                next unless g.gem.generate_functions
+            struct mrbgem_spec
+            {
+              init_final_f *gem_init;
+              init_final_f *gem_final;
+              gemcut_name_index_t name_index_end;
+              gemcut_deps_index_t deps_index_end;
+            };
 
-                if a.empty?
-                  a << <<~DEF
-                    #define NULL_GEMFUNC_PAIR() NULL, NULL
-                    #define MAKE_GEMFUNC_PAIR(CNAME) GENERATED_TMP_mrb_ ## CNAME ## _gem_init, GENERATED_TMP_mrb_ ## CNAME ## _gem_final
-                    typedef void init_final_f(mrb_state *);
-                  DEF
-                else
-                  a << "\n"
-                end
-                a << "init_final_f MAKE_GEMFUNC_PAIR(#{g.cname});" \
-              }
-            }
-
-            #{
-              gems.each_with_object("") { |g, a|
-                next if g.deps.empty?
-
-                deplist = g.deps.map { |d| %(#{d}) }.join(", ")
-                a << "\n" unless a.empty?
-                a << %(static const uint16_t deps_#{g.cname}[] = { #{deplist} };)
-              }
-            }
-
-            static const struct mgem_spec mgems_list[] = {
+            #define MRUBY_GEMCUT_SPEC_FOREACH(DEF) \\
+              /* (index)  (name index)  (name)  (cfunc)  (deps_index_end)  (dep_list) */ \\
               #{
-                gems.each_with_object("").with_index { |(g, a), i|
-                  if g.gem.generate_functions
-                    funcpair = "MAKE_GEMFUNC_PAIR(#{g.cname})"
-                  else
-                    funcpair = "NULL_GEMFUNC_PAIR()"
+                name_index_end = 0
+                deps_index_end = 0
+                gems.each_with_index.with_object("") { |(g, i), a|
+                  a << "\n  " unless a.empty?
+                  cfunc = g.gem.generate_functions ? g.cname : "NO_CFUNC"
+                  name_size = g.name.bytesize
+                  name_index_end += name_size
+                  deps_index_end += g.deps.size
+                  dep_list = g.deps.empty? ? "EMPTY" : %(EXPAND(#{g.deps.map { |d| %(#{d}) }.join(", ")}))
+                  a << %(DEF(%3d, %4d, %s, %s, %s, %s) \\) % [i, name_index_end, g.name.inspect, cfunc, deps_index_end, dep_list]
+
+                  if i == 0 && deps_index_end != 0
+                    raise "the end of the dependency index for the first element should indicate 0"
                   end
-
-                  if g.deps.empty?
-                    depsname = "NULL"
-                  else
-                    depsname = "deps_#{g.cname}"
-                  end
-
-                  no = "/* %3d */" % i
-
-                  a << ",\n  " unless a.empty?
-                  a << %(#{no} { #{g.name.inspect}, #{funcpair}, #{g.deps.size}, #{depsname} })
                 }
               }
-            };
 
-            static const struct gemcut_model gemcut_models[] = {
+            #define MRUBY_GEMCUT_MODEL_FOREACH(DEF) \\
+              /* (index)  (name index)  (name)  (bundle)  (available) */ \\
               #{
-                models.map { |m|
+                models.each_with_index.with_object("") { |(m, i), a|
+                  a << "\n  " unless a.empty?
                   bundle = m.bundle.make_bitmap([0] * ((gems.size + 31) / 32))
                   allow = m.allow.make_bitmap(bundle.dup)
                   bundle = bundle.map { |e| "0x%08xUL" % e }.join(", ")
                   allow = allow.map { |e| "0x%08xUL" % e }.join(", ")
-                  "{ #{m.name&.inspect || "NULL"}, { #{bundle} }, { #{allow} } }"
-                }.join(",\n  ")
+                  name = m.name.b
+                  name_index_end += name.bytesize
+                  a << %(DEF(%3d, %4d, %s, (%s), (%s)) \\) % [i, name_index_end, name.inspect, bundle, allow]
+                }
               }
+
+            #define MAKE_GEMFUNC_PAIR(CNAME) GENERATED_TMP_mrb_ ## CNAME ## _gem_init, GENERATED_TMP_mrb_ ## CNAME ## _gem_final
+            #define MRUBY_GEMCUT_EXPAND(...) __VA_ARGS__,
+            #define MRUBY_GEMCUT_EMPTY
+
+            #define MRUBY_GEMCUT_FUNC_DECLS(I, A, N, F, D, L) init_final_f MAKE_GEMFUNC_PAIR(F);
+            MRUBY_GEMCUT_SPEC_FOREACH(MRUBY_GEMCUT_FUNC_DECLS)
+
+            #define GENERATED_TMP_mrb_NO_CFUNC_gem_init  NULL
+            #define GENERATED_TMP_mrb_NO_CFUNC_gem_final NULL
+            #define MRUBY_GEMCUT_SPEC_DECLS(I, A, N, F, D, L) { MAKE_GEMFUNC_PAIR(F), A, D },
+            static const struct mrbgem_spec mrbgems_list[] = {
+              MRUBY_GEMCUT_SPEC_FOREACH(MRUBY_GEMCUT_SPEC_DECLS)
+            };
+
+            #define MRUBY_GEMCUT_DEPENDS_JOIN(T, L) T ## L
+            #define MRUBY_GEMCUT_DEPENDS_DECLS(I, A, N, F, D, L) MRUBY_GEMCUT_ ## L
+            static const gemcut_deps_index_t mrbgems_deps_list[] = {
+              MRUBY_GEMCUT_SPEC_FOREACH(MRUBY_GEMCUT_DEPENDS_DECLS)
+            };
+
+            #define MRUBY_GEMCUT_MODEL_DECLS(I, A, N, B, V) { { MRUBY_GEMCUT_EXPAND B }, { MRUBY_GEMCUT_EXPAND V }, A },
+            static const struct gemcut_model gemcut_models[] = {
+              MRUBY_GEMCUT_MODEL_FOREACH(MRUBY_GEMCUT_MODEL_DECLS)
+            };
+
+            #define MRUBY_GEMCUT_GEMNAME_DECLS(I, A, N, F, D, L) N
+            #define MRUBY_GEMCUT_MODELNAME_DECLS(I, A, N, B, V) N
+            static const char gemcut_name_table[] = {
+              MRUBY_GEMCUT_SPEC_FOREACH(MRUBY_GEMCUT_GEMNAME_DECLS)
+              MRUBY_GEMCUT_MODEL_FOREACH(MRUBY_GEMCUT_MODELNAME_DECLS)
             };
           DEPS_H
         end

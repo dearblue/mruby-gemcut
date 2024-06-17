@@ -49,15 +49,6 @@ popcount32(uint32_t n)
 #define RESULT_VOID_ERROR
 #define RESULT_TO_ZERO(V) 0
 
-struct mgem_spec
-{
-  const char *name;
-  void (*gem_init)(mrb_state *mrb);
-  void (*gem_final)(mrb_state *mrb);
-  const uint32_t numdeps:16;
-  const uint16_t *deps;
-};
-
 #ifndef MRB_PRESYM_SCANNING
 /*
  * HINT:
@@ -124,13 +115,19 @@ gemcut_set_loaded_by_id(struct gemcut *g, int id)
   g->loaded[inv / MGEMS_UNIT_BITS] |= 1UL << (inv % MGEMS_UNIT_BITS);
 }
 
+#define IS_MATCH_NAME(N, NLEN, M, MLEN) ((NLEN) == (MLEN) && memcmp(N, M, NLEN) == 0)
+#define IS_MATCH_ENTRY_NAME(N, NLEN, E) IS_MATCH_NAME(N, NLEN, gemcut_name_table + (E)[-1].name_index_end, (E)[-1].name_index_end - (E)[0].name_index_end)
+
 static int
 gemcut_lookup(mrb_state *mrb, const char name[], mrb_bool autoprefix)
 {
+  size_t namelen = strlen(name);
+
   for (;;) {
-    FOREACH_ALIST(const struct mgem_spec, *mgem, mgems_list) {
-      if (strcmp(name, mgem->name) == 0) {
-        return mgem - mgems_list;
+    FOREACH_ALIST(const struct mrbgem_spec, *mgem, mrbgems_list) {
+      size_t name_beg = (mgem == mrbgems_list) ? 0 : mgem[-1].name_index_end;
+      if (IS_MATCH_NAME(name, namelen, gemcut_name_table + name_beg, mgem->name_index_end - name_beg)) {
+        return mgem - mrbgems_list;
       }
     }
 
@@ -142,6 +139,7 @@ gemcut_lookup(mrb_state *mrb, const char name[], mrb_bool autoprefix)
       mrb_value str = mrb_str_new_cstr(mrb, "mruby-");
       mrb_str_cat_cstr(mrb, str, name);
       name = mrb_str_to_cstr(mrb, str);
+      namelen = RSTRING_LEN(str);
       mrb_gc_arena_restore(mrb, ai);
     }
   }
@@ -157,9 +155,9 @@ model_is_available(const struct gemcut_model *model, size_t id)
 }
 
 static mrb_bool
-model_is_available_by_gem(const struct gemcut_model *model, const struct mgem_spec *gem)
+model_is_available_by_gem(const struct gemcut_model *model, const struct mrbgem_spec *gem)
 {
-  return model_is_available(model, (size_t)(gem - mgems_list));
+  return model_is_available(model, (size_t)(gem - mrbgems_list));
 }
 
 #define id_gemcut mrb_intern_lit(mrb, "mruby-gemcut-structure")
@@ -234,8 +232,10 @@ mruby_gemcut_model_select(mrb_state *mrb, const char model_name[])
 
   gcut->model = &gemcut_models[0];
   if (model_name) {
+    size_t len = strlen(model_name);
+
     FOREACH_ALIST(const struct gemcut_model, *p, gemcut_models) {
-      if (p->name && strcmp(p->name, model_name) == 0) {
+      if (p != gemcut_models && IS_MATCH_ENTRY_NAME(model_name, len, p)) {
         gcut->model = p;
         break;
       }
@@ -249,10 +249,10 @@ MRB_API const char *
 mruby_gemcut_model_name(mrb_state *mrb)
 {
   struct gemcut *gcut = get_gemcut_noraise(mrb);
-  if (gcut == NULL) {
+  if (gcut == NULL || gcut->model == &gemcut_models[0]) {
     return NULL;
   } else {
-    return gcut->model->name;
+    return gemcut_name_table + gcut->model[-1].name_index_end;
   }
 }
 
@@ -261,8 +261,9 @@ mruby_gemcut_model_list(mrb_state *mrb)
 {
   mrb_value list = mrb_ary_new_capa(mrb, sizeof(gemcut_models) / sizeof(gemcut_models[0]) - 1);
   FOREACH_ALIST(const struct gemcut_model, *p, gemcut_models) {
-    if (p->name) {
-      mrb_ary_push(mrb, list, mrb_str_new_static(mrb, p->name, strlen(p->name)));
+    if (p != &gemcut_models[0]) {
+      size_t name_beg = p[-1].name_index_end;
+      mrb_ary_push(mrb, list, mrb_str_new_static(mrb, gemcut_name_table + name_beg, p->name_index_end - name_beg));
     }
   }
   return list;
@@ -282,8 +283,10 @@ mruby_gemcut_model_p(mrb_state *mrb, const char model_name[])
   (void)mrb;
 
   if (model_name) {
+    size_t len = strlen(model_name);
+
     FOREACH_ALIST(const struct gemcut_model, *p, gemcut_models) {
-      if (p->name && strcmp(p->name, model_name) == 0) {
+      if (p != &gemcut_models[0] && IS_MATCH_ENTRY_NAME(model_name, len, p)) {
         return TRUE;
       }
     }
@@ -332,7 +335,7 @@ DEFINE_PROTECTED_FUNCTION(
 static mrb_value
 gemcut_cleanup_main(mrb_state *mrb, void *opaque)
 {
-  const struct mgem_spec *mgem = (const struct mgem_spec *)opaque;
+  const struct mrbgem_spec *mgem = (const struct mrbgem_spec *)opaque;
   mgem->gem_final(mrb);
   return mrb_nil_value();
 }
@@ -343,7 +346,7 @@ gemcut_cleanup(mrb_state *mrb)
   struct gemcut *gcut = get_gemcut_noraise(mrb);
   if (gcut == NULL) { return; }
 
-  const struct mgem_spec *mgem = mgems_list + MGEMS_POPULATION - 1;
+  const struct mrbgem_spec *mgem = mrbgems_list + MGEMS_POPULATION - 1;
   int ai = mrb_gc_arena_save(mrb);
   for (int i = MGEMS_POPULATION - 1; i >= 0; i--, mgem--) {
     if (gemcut_loaded_p_by_id(gcut, i) && mgem->gem_final) {
@@ -443,11 +446,14 @@ struct gemcut_require_by_id_main_top
 static void
 gemcut_require_by_id_main(mrb_state *mrb, struct gemcut *gcut, int id, int *ai)
 {
-  const struct mgem_spec *spec = &mgems_list[id];
+  const struct mrbgem_spec *spec = &mrbgems_list[id];
 
-  {
-    const uint16_t *deps = spec->deps;
-    for (int i = spec->numdeps; i > 0; i--, deps++) {
+  if (id == 0) {
+    mrb_assert(spec[0].deps_index_end == 0);
+  } else {
+    const gemcut_deps_index_t *deps = mrbgems_deps_list + spec[-1].deps_index_end;
+    gemcut_deps_index_t deps_num = spec[0].deps_index_end - spec[-1].deps_index_end;
+    for (int i = deps_num; i > 0; i--, deps++) {
       if (!gemcut_loaded_p_by_id(gcut, *deps)) {
         gemcut_require_by_id_main(mrb, gcut, *deps, ai);
       }
@@ -517,7 +523,8 @@ gemcut_require_main(mrb_state *mrb, void *opaque)
   }
 
   if (!model_is_available(gcut->model, id)) {
-    return gemcut_load_error(mrb, mgems_list[id].name);
+    size_t name_beg = (id == 0) ? 0 : mrbgems_list[id - 1].name_index_end;
+    return gemcut_load_error(mrb, gemcut_name_table + name_beg);
   }
 
   return gemcut_require_by_id(mrb, gcut, id);
@@ -576,7 +583,9 @@ gemcut_loaded_features_main(mrb_state *mrb, void *opaque)
   mrb_value ary = mrb_ary_new(mrb);
   for (int i = 0; i < MGEMS_POPULATION; i++) {
     if (gemcut_loaded_p_by_id(gcut, i)) {
-      mrb_ary_push(mrb, ary, mrb_str_new_static(mrb, mgems_list[i].name, strlen(mgems_list[i].name)));
+      const struct mrbgem_spec *g = &mrbgems_list[i];
+      size_t name_beg = (i == 0) ? 0 : g[-1].name_index_end;
+      mrb_ary_push(mrb, ary, mrb_str_new_static(mrb, gemcut_name_table + name_beg, g[0].name_index_end - name_beg));
     }
   }
   return ary;
@@ -655,9 +664,10 @@ gemcut_loadable_features_main(mrb_state *mrb, void *opaque)
   const struct gemcut_model *model = get_gemcut(mrb)->model;
 
   mrb_value ary = mrb_ary_new(mrb);
-  FOREACH_ALIST(const struct mgem_spec, *mgem, mgems_list) {
+  FOREACH_ALIST(const struct mrbgem_spec, *mgem, mrbgems_list) {
     if (model_is_available_by_gem(model, mgem)) {
-      mrb_ary_push(mrb, ary, mrb_str_new_static(mrb, mgem->name, strlen(mgem->name)));
+      size_t name_beg = (mgem == mrbgems_list) ? 0 : mgem[-1].name_index_end;
+      mrb_ary_push(mrb, ary, mrb_str_new_static(mrb, gemcut_name_table + name_beg, mgem[0].name_index_end - name_beg));
     }
   }
 
@@ -685,7 +695,7 @@ gemcut_loadable_feature_count_main(mrb_state *mrb, void *opaque)
   const struct gemcut_model *model = get_gemcut(mrb)->model;
 
   int count = 0;
-  FOREACH_ALIST(const struct mgem_spec, *mgem, mgems_list) {
+  FOREACH_ALIST(const struct mrbgem_spec, *mgem, mrbgems_list) {
     if (model_is_available_by_gem(model, mgem)) {
       count++;
     }

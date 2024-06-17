@@ -53,7 +53,7 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
     end
   end
 
-  @models = [Gemcut::Model.new("default", ["mruby-gemcut"], [], [], caller)]
+  @models = [Gemcut::Model.new(nil, ["mruby-gemcut"], [], [], caller)]
 
   if cc.command =~ /\b(?:g?cc|clang)d*\b/
     cc.flags << %w(-Wno-declaration-after-statement)
