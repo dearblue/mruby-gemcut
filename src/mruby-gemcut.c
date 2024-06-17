@@ -672,16 +672,11 @@ gemcut_s_facet(mrb_state *mrb, mrb_value mod)
 
   const mrb_value *argv;
   mrb_int argc;
-  mrb_get_args(mrb, "*", &argv, &argc);
+  mrb_get_args(mrb, "*!", &argv, &argc);
 
-  // 直接 gemcut_require_main() を呼び出したいところだが、GENERATED_TMP_mrb_***_gem_init() が
-  // 呼び出す mrb_load_proc() は現在のメソッドの引数スタックを破壊する。
-  // これにより引数がすべて GC により回収されることで SIGSEGV を起こす可能性がある。
-  // 回避策として Gemcut.require を VM 経由で呼び出す。
-  mrb_value proc = mrb_obj_value(mrb_proc_new_cfunc(mrb, gemcut_s_require));
   int ai = mrb_gc_arena_save(mrb);
   for (int i = 0; i < (int)argc; i++) {
-    mrb_yield_argv(mrb, proc, 1, &argv[i]);
+    gemcut_require_main(mrb, (void *)(uintptr_t)mrb_string_cstr(mrb, argv[i]));
     mrb_gc_arena_restore(mrb, ai);
   }
 

@@ -135,4 +135,12 @@ mrb_exc_get(mrb_state *mrb, const char name[])
 
 #define MRB_RAISE_LIT(MRB, C, STRLIT) mrb_exc_raise(MRB, mrb_exc_new_lit(MRB, C, "" STRLIT))
 
+#ifndef RSTRING_CSTR // mruby-2.1.0 で登場
+static inline const char *
+mrb_string_cstr(mrb_state *mrb, mrb_value obj)
+{
+  return mrb_string_value_cstr(mrb, &obj);
+}
+#endif
+
 #endif // MRUBY_GEMCUT_COMPAT_H
