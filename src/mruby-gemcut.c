@@ -364,6 +364,7 @@ gemcut_cleanup(mrb_state *mrb)
   static mrb_value                                                            \
   NAME(mrb_state *mrb)                                                        \
   {                                                                           \
+    mrb_alignas(8)                                                            \
     static const struct RProc proc = {                                        \
       NULL, NULL, MRB_TT_PROC, MRB_GC_RED, MRB_FL_OBJ_IS_FROZEN | MRB_PROC_CFUNC_FL, \
       { (const mrb_irep *)FUNC }, NULL, { NULL }                              \

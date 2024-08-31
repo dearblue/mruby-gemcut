@@ -143,4 +143,22 @@ mrb_string_cstr(mrb_state *mrb, mrb_value obj)
 }
 #endif
 
+#ifndef mrb_alignas
+# if defined(__cplusplus) && __cplusplus >= 201103L
+#  // https://ja.cppreference.com/w/cpp/language/alignas
+#  define mrb_alignas(n) alignas(n)
+# elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+#  // https://ja.cppreference.com/w/c/language/_Alignas
+#  define mrb_alignas(n) _Alignas(n)
+# elif defined(__GNUC__) || defined(__clang__)
+#  // https://gcc.gnu.org/onlinedocs/gcc/Common-Type-Attributes.html#index-aligned-type-attribute
+#  define mrb_alignas(n) __attribute__((aligned(n)))
+# elif defined(_MSC_VER)
+#  // https://learn.microsoft.com/en-us/cpp/cpp/align-cpp?view=msvc-170
+#  define mrb_alignas(n) __declspec(align(n))
+# else
+#  define mrb_alignas(n)
+# endif
+#endif
+
 #endif // MRUBY_GEMCUT_COMPAT_H
