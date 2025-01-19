@@ -66,11 +66,11 @@ aux_cptr(mrb_value val)
 #  define aux_cptr mrb_cptr
 # endif // defined(MRB_NAN_BOXING) || defined(MRB_WORD_BOXING)
 
-typedef mrb_value mrb_protect_error_f(mrb_state *mrb, void *opaque);
+typedef mrb_value mrb_protect_error_func(mrb_state *mrb, void *opaque);
 
 struct mrb_protect_error_wrap
 {
-  mrb_protect_error_f *body;
+  mrb_protect_error_func *body;
   void *opaque;
 };
 
@@ -82,7 +82,7 @@ mrb_protect_error_wrap(mrb_state *mrb, mrb_value val)
 }
 
 static mrb_value
-mrb_protect_error(mrb_state *mrb, mrb_protect_error_f *body, void *opaque, mrb_bool *error)
+mrb_protect_error(mrb_state *mrb, mrb_protect_error_func *body, void *opaque, mrb_bool *error)
 {
   struct mrb_protect_error_wrap wrap = { body, opaque };
   return mrb_protect(mrb, mrb_protect_error_wrap, aux_cptr_value(mrb, &wrap), error);

@@ -21,7 +21,7 @@ task testtask => "test-mruby-gemcut-config"
 task "test-mruby-gemcut-config" do
   puts ">>> configuration test for mruby-gemcut <<<"
   env = { "MRUBY_ROOT" => MRUBY_ROOT }
-  system env, "ruby", File.join(File.dirname(__dir__), "testgem/conftest/conftest.rb") or fail
+  system env, "ruby", File.join(File.dirname(__dir__), "conftest/conftest.rb") or fail
 end
 
 module Gemcut

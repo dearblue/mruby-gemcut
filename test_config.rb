@@ -6,7 +6,7 @@ config = YAML.load <<'YAML'
   common:
     gems:
     - :core: "mruby-sprintf"
-    - :core: "mruby-print"
+    - :core: "mruby-fiber"
     - :core: "mruby-bin-mrbc"
   builds:
     nobox64:
@@ -37,13 +37,11 @@ MRuby::Build.new do
       g.cxx.flags << %w(-Wpedantic -Wall -Wextra)
     end
 
-    g.add_model "model1", bundle: %w(mruby-print), deny: %w(mruby-sprintf)
-    g.add_model "model2", bundle: %w(mruby-sprintf), deny: %w(mruby-print)
+    g.add_model "model1", bundle: %w(mruby-fiber), deny: %w(mruby-sprintf)
+    g.add_model "model2", bundle: %w(mruby-sprintf), deny: %w(mruby-fiber)
   end
 
   gembox "default"
-
-  gem File.join(__dir__, "testgem")
 end
 
 config["builds"].each_pair do |n, c|
@@ -79,7 +77,5 @@ config["builds"].each_pair do |n, c|
         g.cxx.flags << %w(-Wpedantic -Wall -Wextra)
       end
     end
-
-    gem File.join(__dir__, "testgem")
   end
 end

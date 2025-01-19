@@ -5,6 +5,17 @@ require_relative "helper/internals"
 
 using Gemcut::Internals
 
+MRuby::Build.current.instance_eval do
+  if self.test_enabled?
+    # もしかしたら問題があるかもしれない
+    self.gem core: "mruby-compiler"
+    self.gem core: "mruby-enumerator"
+    self.gem core: "mruby-fiber"
+    self.gem core: "mruby-hash-ext"
+    self.gem core: "mruby-sprintf"
+  end
+end
+
 MRuby::Gem::Specification.new("mruby-gemcut") do |s|
   s.summary = "runtime reconfigurer for mruby gems"
   version = File.read(File.join(File.dirname(__FILE__), "README.ja.md")).scan(/^ *[-*] version: *(\d+(?:.\w+)+)/i).flatten[-1] rescue nil
@@ -12,6 +23,8 @@ MRuby::Gem::Specification.new("mruby-gemcut") do |s|
   s.license = "BSD-2-Clause"
   s.author  = "dearblue"
   s.homepage = "https://github.com/dearblue/mruby-gemcut"
+
+  build.cc.include_paths << File.join(__dir__, "include") if MRuby::Source::MRUBY_RELEASE_NO < 30000
 
   # for `mrb_protect()`
   add_dependency "mruby-error", core: "mruby-error" if Gemcut.need_error_gem?

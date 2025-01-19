@@ -41,35 +41,35 @@ using Module.new {
 assert "mruby-gemcut when building" do
   assert_build_gemcut_with_fail(/^TypeError: no implicit conversion of Integer into Array\b/, <<~CONFIG_PART)
     gembox "default"
-    gem %(#{File.dirname File.dirname __dir__}) do |g|
+    gem %(#{File.dirname __dir__}) do |g|
       g.add_model "default", bundle: 9
     end
   CONFIG_PART
 
   assert_build_gemcut_with_fail(/^TypeError: no implicit conversion of Integer into Array\b/, <<~CONFIG_PART)
     gembox "default"
-    gem %(#{File.dirname File.dirname __dir__}) do |g|
+    gem %(#{File.dirname __dir__}) do |g|
       g.add_model "default", allow: 9
     end
   CONFIG_PART
 
   assert_build_gemcut_with_fail(/^TypeError: no implicit conversion of Integer into Array\b/, <<~CONFIG_PART)
     gembox "default"
-    gem %(#{File.dirname File.dirname __dir__}) do |g|
+    gem %(#{File.dirname __dir__}) do |g|
       g.add_model "default", deny: 9
     end
   CONFIG_PART
 
   assert_build_gemcut_with_fail(/^ArgumentError: the `allow` and `deny` arguments are exclusive\b/, <<~CONFIG_PART)
     gembox "default"
-    gem %(#{File.dirname File.dirname __dir__}) do |g|
+    gem %(#{File.dirname __dir__}) do |g|
       g.add_model "default", allow: true, deny: true
     end
   CONFIG_PART
 
   assert_build_gemcut_with_fail(/^incorrect GEM contained in both "bundle list" and "deny list" - mruby-bin-mruby$/, <<~CONFIG_PART)
     gembox "default"
-    gem %(#{File.dirname File.dirname __dir__}) do |g|
+    gem %(#{File.dirname __dir__}) do |g|
       g.add_denylist "mruby-bin-mruby", "mruby-bin-mirb"
       g.add_model "default", bundle: %w(mruby-bin-mruby)
     end
@@ -77,8 +77,8 @@ assert "mruby-gemcut when building" do
 
   assert_build_gemcut_with_fail(/^incorrect GEM contained in both "bundle list" and "deny list" - mruby-enumerator, mruby-fiber$/, <<~CONFIG_PART)
     gembox "default"
-    gem %(#{File.dirname File.dirname __dir__}) do |g|
-      g.add_model "default", bundle: %w(mruby-print mruby-enumerator), deny: %w(mruby-fiber)
+    gem %(#{File.dirname __dir__}) do |g|
+      g.add_model "default", bundle: %w(mruby-proc-ext mruby-enumerator), deny: %w(mruby-fiber)
     end
   CONFIG_PART
 end
