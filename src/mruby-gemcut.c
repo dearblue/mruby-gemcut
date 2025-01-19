@@ -616,8 +616,6 @@ gemcut_require_by_id(mrb_state *mrb, struct gemcut *gcut, int id)
     gcut->set_atexit = true;
   }
 
-  TODO("mrb_yield_with_class() を経由する MRB_TT_CPTR を避ける (MRB_TT_CDATA に置き換える)")
-
   struct gemcut_require_by_id_main args = { gcut, id, mrb_gc_arena_save(mrb) };
   struct { mrb_value args, arena; } argv = { mrb_cptr_value(mrb, &args), gemcut_snapshot_gc_arena(mrb) };
   mrb_value ret = mrb_yield_with_class(mrb, gemcut_require_by_id_guard1_proc(mrb), 2, &argv.args, mrb_top_self(mrb), mrb->object_class);
