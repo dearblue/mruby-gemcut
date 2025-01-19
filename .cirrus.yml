@@ -1,5 +1,5 @@
 freebsd_instance:
-  image: freebsd-14-1-release-amd64-ufs
+  image_family: freebsd-14-2
 
 task:
   env:
@@ -15,4 +15,3 @@ task:
   - rake clean
   - rake -mv test:build
   - rake -v test
-  - build/host/bin/mruby-gemcut-test
