@@ -360,13 +360,18 @@ gemcut_cleanup(mrb_state *mrb)
 }
 
 #ifdef MRB_GC_RED // MRUBY_RELEASE_NO >= 30100
+# ifdef MRB_OBJ_IS_FROZEN
+#  define MAKE_OBJ_FLAG_BLOCK(FROZEN, REST) ((FROZEN) ? MRB_OBJ_IS_FROZEN : 0), (REST)
+# else
+#  define MAKE_OBJ_FLAG_BLOCK(FROZEN, REST) (((FROZEN) ? MRB_FL_OBJ_IS_FROZEN : 0) | (REST))
+# endif
 # define MAKE_FUNC_AGET_PROC_FROM_CFUNC(NAME, FUNC)                           \
   static mrb_value                                                            \
   NAME(mrb_state *mrb)                                                        \
   {                                                                           \
     mrb_alignas(8)                                                            \
     static const struct RProc proc = {                                        \
-      NULL, NULL, MRB_TT_PROC, MRB_GC_RED, MRB_FL_OBJ_IS_FROZEN | MRB_PROC_CFUNC_FL, \
+      NULL, NULL, MRB_TT_PROC, MRB_GC_RED, MAKE_OBJ_FLAG_BLOCK(TRUE, MRB_PROC_CFUNC_FL), \
       { (const mrb_irep *)FUNC }, NULL, { NULL }                              \
     };                                                                        \
     return mrb_obj_value((void *)&proc);                                      \
