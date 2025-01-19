@@ -585,6 +585,7 @@ gemcut_require_by_id_guard1(mrb_state *mrb, mrb_value self)
 
   mrb_bool error;
   mrb_value ret = mrb_protect_error(mrb, gemcut_require_by_id_guard2, (void *)&argv[0], &error);
+  argv = CI_STACK(mrb->c) + 1;
   gemcut_rollback_gc_arena(mrb, argv[1]);
 
   if (error && mrb->jmp) {
