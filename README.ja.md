@@ -109,6 +109,14 @@ end
 
 ただし `mruby_open()` や `mruby_open_alloc()` を制限するものではないことに注意して下さい。
 
+### ビルド設定値
+
+  - `MRUBY_GEMCUT_NEED_PRINT`
+
+    簡易バージョンの `Kernel#print` メソッドを定義します。
+    これは mruby-3.4 以降で `mruby-bin-mruby` の `bintest` を実行する時に必要です。
+    mruby-3.3 以前、または `MRB_NO_STDIO` が設定されている場合は、単純に無視されます。
+
 
 ## つかいかた
 

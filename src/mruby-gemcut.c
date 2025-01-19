@@ -914,6 +914,47 @@ gemcut_s_seal(mrb_state *mrb, mrb_value mod)
   return gemcut_seal_main(mrb, NULL);
 }
 
+#if MRUBY_RELEASE_NO >= 30300 && defined(MRUBY_GEMCUT_NEED_PRINT) && !defined(MRB_NO_STDIO)
+static int
+aux_get_argc(mrb_state *mrb)
+{
+  mrb_int argc = mrb_get_argc(mrb);
+
+# if MRB_INT_MAX > INT_MAX
+  if (argc > INT_MAX) {
+    mrb_raise(mrb, E_RANGE_ERROR, "number too big");
+  }
+# endif
+
+  (void)mrb;
+  return (int)argc;
+}
+
+static mrb_value
+kernel_print(mrb_state *mrb, mrb_value self)
+{
+  int ai = mrb_gc_arena_save(mrb);
+  int argc = aux_get_argc(mrb);
+
+  for (int i = 0; i < argc; i++, mrb_gc_arena_restore(mrb, ai)) {
+    mrb_value str = mrb_get_argv(mrb)[i];
+
+    if (!mrb_string_p(str)) {
+      str = mrb_obj_as_string(mrb, str);
+    }
+
+    size_t len = RSTRING_LEN(str);
+    if (fwrite(RSTRING_PTR(str), sizeof(char), len, stdout) != len) {
+      mrb_sys_fail(mrb, "failed write to stdout");
+    }
+  }
+
+  return mrb_nil_value();
+}
+#else
+# undef MRUBY_GEMCUT_NEED_PRINT
+#endif
+
 void
 mrb_mruby_gemcut_gem_init(mrb_state *mrb)
 {
@@ -936,6 +977,10 @@ mrb_mruby_gemcut_gem_init(mrb_state *mrb)
 
   mrb_define_class_method(mrb, gemcut_mod, "seal", gemcut_s_seal, MRB_ARGS_NONE());
   mrb_define_class_method(mrb, gemcut_mod, "seal!", gemcut_s_seal, MRB_ARGS_NONE());
+
+#ifdef MRUBY_GEMCUT_NEED_PRINT
+  mrb_define_method(mrb, mrb->kernel_module, "print", kernel_print, MRB_ARGS_ANY());
+#endif
 }
 
 void
